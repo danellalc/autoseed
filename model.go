@@ -1,3 +1,6 @@
+// Package autoseed reads an ORM model through an adapter's ModelSource and
+// seeds a database from it: full referential integrity, deterministic
+// output, no hand-written ordering or fixtures.
 package autoseed
 
 // Entity describes one seedable type read from an ORM model: its name, the
