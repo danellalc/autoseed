@@ -1,0 +1,84 @@
+# AGENTS.md
+
+Guidance for AI coding agents working in this repository.
+
+If you are consuming this library rather than developing it, read [llms.txt](llms.txt) instead.
+
+## What this project is
+
+A library that seeds a database by reading the ORM model. The model is the specification — nothing about entities, ordering or relationships is declared by hand. Sibling of EFCore.AutoSeed (.NET, same author, same pipeline); when a design question arises, check how the sibling solved it first.
+
+## Build and test
+
+```bash
+go build ./...
+go test ./...              # everything (needs Docker for integration)
+go test ./... -short       # no Docker
+go test -run TestCycle ./...
+go vet ./... && golangci-lint run
+```
+
+Integration tests use testcontainers-go against real PostgreSQL and MySQL. SQLite is a supported target but NEVER the only test surface — it accepts data the real engines reject.
+
+## The pipeline
+
+Seven stages; new code belongs to exactly one:
+
+1. `ModelReader` (in adapters) — entities, fields, keys, references, soft-delete, embedded
+2. `DependencyGraph` — stable topological sort, ties break on entity name
+3. `CycleResolver` — nullable cycles → two passes; required cycles → `ErrUnsatisfiableCycle` naming entities
+4. `GenerationPlan` — row counts, cardinality, distribution
+5. `ValueGeneration` — semantic inference over gofakeit, seeded
+6. `ConstraintSatisfaction` — uniqueness via pre-shuffled pools, not-null, length
+7. `Persistence` — ordered batched insert, generated IDs read back before children
+
+## Hard rules
+
+**Determinism is the central guarantee.** Same seed, same data, always.
+- All randomness derives from the root seed, hierarchically and positionally: root → entity → row index → field.
+- **Never iterate a map where order affects output** — Go randomizes map order by design; sort keys first. This is the #1 trap in this codebase and has a dedicated test.
+- No global `math/rand`, no `time.Now()` in the generation path.
+- Generation is sequential; insertion may batch. Changing generated output for a given seed is a breaking change (major — and in Go, a new major means a new import path, so avoid).
+
+**The core knows no ORM.** Root package depends on stdlib + gofakeit only. `import "gorm.io/gorm"` outside `/gormseed` means the modeling is wrong — stop and refactor. Adapters implement `ModelSource`; everything downstream consumes only that contract.
+
+**Never re-derive GORM conventions by hand.** Use `schema.Parse` and `schema.Relationships`. GORM resolves; we read.
+
+**Errors, never panics.** Typed sentinel errors (`ErrUnsatisfiableCycle`, `ErrUnsupportedField`) wrapped with `%w`, friendly to `errors.Is`/`errors.As`, naming the entity and field in English.
+
+**Fail by name, never silently.** Unsupported constructs are skipped BY NAME in the Explain report or returned as typed errors. Silently mis-generated data is the worst failure mode this project exists to prevent.
+
+**Embedded structs are columns, not entities.** Soft-delete rows are generated mostly-visible.
+
+## Code style
+
+- No comments on unexported identifiers — descriptive names instead. No emojis.
+- **Godoc on every exported identifier is mandatory** (starts with the name). It ships to pkg.go.dev and is the project's storefront.
+- `gofmt`, `go vet`, `golangci-lint` clean. Short lowercase package names (`gormseed`).
+- `context.Context` first parameter on anything touching a database. Error as last return.
+- Accept interfaces, return structs. Functional options for configuration.
+- Table-driven tests as the default.
+
+## Testing expectations
+
+- Property-based (pgregory.net/rapid): for any model and any seed, every FK references an existing row.
+- Determinism: same seed twice → byte-identical output; anti-map-iteration test runs repeatedly.
+- New inference rules and distribution shapes ship with tests.
+- The MegaMart torture model (cycles, self-refs, embedded, soft-delete, composite unique, many2many) must stay green.
+
+## Commits
+
+Conventional commits in English. Scopes: `core`, `gormseed`, `entseed`, `graph`, `inference`, `cli`.
+
+```
+feat(graph): stable topological sort with name tiebreak
+fix(gormseed): read composite primary keys from schema.Parse
+```
+
+Never mention AI assistance, Claude, or co-authorship in commit messages.
+
+## Out of scope
+
+Do not implement, and close issues requesting: production data anonymisation, cloud/hosted anything, ORMs beyond GORM and ent without demonstrated traction, databases beyond PostgreSQL/MySQL/SQLite, speculative adapters.
+
+Two tools in this category died of scope creep. The boundary is the survival strategy.

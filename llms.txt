@@ -1,0 +1,69 @@
+# autoseed (Go)
+
+> Seeds a database by reading the ORM model. Reads GORM struct schemas (ent support planned), works out insertion order from foreign keys via stable topological sort, resolves nullable cycles in two passes, infers what each field means from its name, and writes referentially valid rows with realistic long-tail distribution. Deterministic: same seed produces the same data. Built on gofakeit for values — adds the relationship layer gofakeit documents as out of scope.
+
+Unlike every other Go seeder, nothing is declared by hand — no YAML fixtures, no hand-written Seed() loops, no files numbered 01_, 02_ to get foreign-key order right. The model is the specification.
+
+Sibling project: EFCore.AutoSeed (same author, same design, .NET).
+
+- Module: `github.com/danellalc/autoseed`
+- Adapters: `autoseed/gormseed` (GORM, v1), `autoseed/entseed` (ent, planned)
+- Databases: PostgreSQL, MySQL, SQLite
+- License: MIT
+- Status: in development
+
+## Install
+
+```bash
+go get github.com/danellalc/autoseed
+```
+
+## Primary API
+
+```go
+import (
+    "github.com/danellalc/autoseed"
+    "github.com/danellalc/autoseed/gormseed"
+)
+
+// Seed 1,000 root rows with a fixed seed. Related entities scale from relationships.
+err := gormseed.Seed(db, autoseed.WithSeed(42), autoseed.WithScale(1_000))
+
+// Smallest dataset exercising every enum-like value, nil state and cardinality edge.
+err := gormseed.SeedCoverage(db)
+
+// Print the plan without writing anything.
+plan, err := gormseed.Explain(db, autoseed.WithSeed(42), autoseed.WithScale(1_000))
+fmt.Println(plan.Report())
+```
+
+Options (functional): `WithSeed(uint64)`, `WithScale(int)`, `WithLocale("pt_BR")`, `WithNilRate(0.2)`.
+
+## Guarantees
+
+- Every generated foreign key references a row that exists.
+- Same seed produces identical data, across runs and machines. Map iteration never affects output.
+- Embedded structs are written as columns, not tables.
+- Soft-deleted rows (gorm.DeletedAt) are generated in small realistic proportion — most rows visible.
+- Unsatisfiable models (required FK cycles) return ErrUnsatisfiableCycle naming the entities, rather than letting the database throw.
+- Unsupported constructs are skipped BY NAME in the Explain report, never silently mis-generated.
+
+## Common mistakes when using this library
+
+- Do not write a seeder struct or a factory. There is nothing to declare — call gormseed.Seed on the *gorm.DB.
+- Do not order entities manually. Order is derived from the model's foreign keys.
+- Do not omit WithSeed if the result must be reproducible in tests.
+- Do not test only against SQLite — it accepts data MySQL and PostgreSQL reject. Use real engines for integration.
+- Polymorphic associations are read but not generated yet (v2); they appear as skipped in Explain.
+
+## Not supported
+
+- ORMs other than GORM (ent is planned; others on demand with traction).
+- Databases other than PostgreSQL, MySQL, SQLite.
+- Production data anonymisation. No cloud, no service.
+
+## Documentation
+
+- README: https://github.com/danellalc/autoseed/blob/main/README.md
+- Architecture: https://github.com/danellalc/autoseed/blob/main/ARCHITECTURE.md
+- .NET sibling: https://github.com/danellalc/EFCore.AutoSeed
