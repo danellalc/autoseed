@@ -26,16 +26,20 @@ import (
     "github.com/danellalc/autoseed/gormseed"
 )
 
+models := []any{&Customer{}, &Order{}, &OrderItem{}}
+
 // Seed 1,000 root rows with a fixed seed. Related entities scale from relationships.
-err := gormseed.Seed(db, autoseed.WithSeed(42), autoseed.WithScale(1_000))
+err := gormseed.Seed(db, models, autoseed.WithSeed(42), autoseed.WithScale(1_000))
 
 // Smallest dataset exercising every enum-like value, nil state and cardinality edge.
-err := gormseed.SeedCoverage(db)
+err := gormseed.SeedCoverage(db, models)
 
 // Print the plan without writing anything.
-plan, err := gormseed.Explain(db, autoseed.WithSeed(42), autoseed.WithScale(1_000))
+plan, err := gormseed.Explain(db, models, autoseed.WithSeed(42), autoseed.WithScale(1_000))
 fmt.Println(plan.Report())
 ```
+
+`*gorm.DB` keeps no registry of every struct you have used, so `models` is passed explicitly on every call — the one thing GORM cannot answer for you.
 
 Options (functional): `WithSeed(uint64)`, `WithScale(int)`, `WithLocale("pt_BR")`, `WithNilRate(0.2)`.
 
@@ -50,7 +54,7 @@ Options (functional): `WithSeed(uint64)`, `WithScale(int)`, `WithLocale("pt_BR")
 
 ## Common mistakes when using this library
 
-- Do not write a seeder struct or a factory. There is nothing to declare — call gormseed.Seed on the *gorm.DB.
+- Do not write a seeder struct or a factory. There is nothing to declare beyond the model list — call gormseed.Seed with the *gorm.DB and the structs to seed.
 - Do not order entities manually. Order is derived from the model's foreign keys.
 - Do not omit WithSeed if the result must be reproducible in tests.
 - Do not test only against SQLite — it accepts data MySQL and PostgreSQL reject. Use real engines for integration.

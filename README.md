@@ -21,13 +21,13 @@ And the data you end up with is uniform: every customer with three orders. In pr
 ```go
 import "github.com/danellalc/autoseed/gormseed"
 
-err := gormseed.Seed(db,
+err := gormseed.Seed(db, []any{&Customer{}, &Order{}, &OrderItem{}},
     autoseed.WithSeed(42),
     autoseed.WithScale(1_000),
 )
 ```
 
-That is the whole API for the common case. autoseed reads your model, works out the insertion order, resolves cycles, infers what each field means, and writes referentially valid rows.
+That is the whole API for the common case. GORM keeps no registry of every struct you have used — unlike an EF Core `DbContext`, a `*gorm.DB` cannot tell you what it knows — so the model list is the one thing you state; autoseed works out the insertion order, resolves cycles, infers what each field means, and writes referentially valid rows.
 
 Same seed, same data. Always.
 
@@ -68,7 +68,7 @@ Most customers have one order. A few have hundreds. Timestamps cluster on weekda
 ### It explains itself before it writes anything
 
 ```go
-plan, err := gormseed.Explain(db, autoseed.WithSeed(42), autoseed.WithScale(1_000))
+plan, err := gormseed.Explain(db, []any{&Customer{}, &Order{}, &OrderItem{}}, autoseed.WithSeed(42), autoseed.WithScale(1_000))
 fmt.Println(plan.Report())
 ```
 
@@ -79,7 +79,7 @@ Prints the insertion order, row counts per entity, which cycles got deferred to 
 The opposite of bulk. The *smallest* dataset that exercises everything:
 
 ```go
-err := gormseed.SeedCoverage(db)
+err := gormseed.SeedCoverage(db, []any{&Customer{}, &Order{}, &OrderItem{}})
 ```
 
 Every enum-like field value, every nullable field in both states, every relationship at zero, one and many, every string at empty, one char and max length. Usually under 50 rows.
