@@ -11,3 +11,7 @@ Thumbs.db
 
 # Env
 .env
+
+/docs
+
+CLAUDE.md
