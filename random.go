@@ -41,6 +41,13 @@ func (s *SeededSource) Rand() *rand.Rand {
 	return rand.New(rand.NewPCG(s.seed, s.seed))
 }
 
+// Seed returns the raw derived seed for the current position, for callers
+// that need to build their own rand.Source-compatible generator (gofakeit,
+// for one) rather than a *rand.Rand.
+func (s *SeededSource) Seed() uint64 {
+	return s.seed
+}
+
 func mixString(seed uint64, part string) uint64 {
 	h := fnv.New64a()
 	var buf [8]byte

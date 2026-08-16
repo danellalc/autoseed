@@ -3,6 +3,8 @@
 // output, no hand-written ordering or fixtures.
 package autoseed
 
+import "reflect"
+
 // Entity describes one seedable type read from an ORM model: its name, the
 // fields that hold values, and the foreign key references to other entities.
 type Entity struct {
@@ -11,9 +13,13 @@ type Entity struct {
 	References []Reference
 }
 
-// Field describes one column-backed value on an Entity.
+// Field describes one column-backed value on an Entity. Type is the Go
+// type value generation must produce; Size is the column's maximum length
+// for a string type, zero when the column has no declared limit.
 type Field struct {
 	Name          string
+	Type          reflect.Type
+	Size          int
 	Nullable      bool
 	Unique        bool
 	PrimaryKey    bool

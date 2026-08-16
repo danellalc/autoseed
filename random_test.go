@@ -64,3 +64,12 @@ func TestSeededSource_DifferentSeedsDiverge(t *testing.T) {
 		t.Fatal("different root seeds produced the same value")
 	}
 }
+
+func TestSeededSource_SeedMatchesRand(t *testing.T) {
+	source := autoseed.NewSeededSource(42).Entity("Order").Row(5).Field("Total")
+	want := autoseed.NewSeededSource(source.Seed()).Rand().Uint64()
+	got := source.Rand().Uint64()
+	if got != want {
+		t.Fatalf("Rand() from Seed() = %d, want %d", want, got)
+	}
+}

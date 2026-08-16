@@ -24,6 +24,12 @@ var ErrDuplicateEntity = errors.New("autoseed: duplicate entity name")
 // is no column for it to mean anything.
 var ErrInvalidReference = errors.New("autoseed: reference names no fields")
 
+// ErrUnsupportedField is returned when no inference rule can produce a
+// value for a field: an adapter read a construct value generation does
+// not understand yet, named rather than silently generating the wrong
+// thing or the zero value.
+var ErrUnsupportedField = errors.New("autoseed: no inference rule for field")
+
 func unknownReferenceError(entity string, fields []string, target string) error {
 	return fmt.Errorf("%w: %s.%s references %q", ErrUnknownReference, entity, strings.Join(fields, "+"), target)
 }
