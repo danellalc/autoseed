@@ -87,7 +87,9 @@ SQLite in-memory is Go's InMemory trap: it accepts what MySQL and PostgreSQL rej
 
 **Why the ORM model instead of DDL introspection.** Same as the original: DDL sees tables; the model sees associations, embedded structs, soft-delete intent. Generating from the model produces data the *application* can read. Works before the database exists. SynthDB and Seedfast read DDL and are PostgreSQL-only — this is the structural difference, stated in the README.
 
-**Why gofakeit stays.** It is the ecosystem's value engine (300+ functions, locales, seeded API). autoseed is the layer it documents as out of scope: consistent relationships. Building on it inherits credibility and locale data; replacing it would be scope creep with no upside.
+**Why gofakeit stays.** It is the ecosystem's value engine (300+ functions, seeded API). autoseed is the layer it documents as out of scope: consistent relationships. Building on it inherits credibility; replacing it would be scope creep with no upside.
+
+gofakeit has no locale support at all (v7.15.0, checked directly against its source — no per-locale data, no CPF/CNPJ, English only), unlike Bogus on the .NET side. `inference.DocumentRule` hand-rolls the Brazilian CPF/CNPJ check-digit algorithm (mod 11), ported from the .NET sibling's `BrazilianDocuments.cs`, because there is nothing to call into. Any future locale-specific rule will need the same treatment; do not assume gofakeit covers it.
 
 **Why GORM first, ent second.** GORM has the largest install base — distribution beats elegance for v1. ent's schema is literally a graph exposed by codegen (`gen.Graph`), making it the cheapest adapter to add and the best showcase of the adapter contract — perfect v2.
 
@@ -100,7 +102,7 @@ SQLite in-memory is Go's InMemory trap: it accepts what MySQL and PostgreSQL rej
 ## Roadmap
 
 **v1 — GORM core**
-Model reading via `schema.Parse`, stable topological sort, nullable-cycle resolution, ~15 inference rules with coherence (FirstName+LastName+Email agree; UpdatedAt ≥ CreatedAt), basic long tail, deterministic seed, PostgreSQL + MySQL + SQLite, `Seed`, `Explain`, `SeedCoverage`.
+Model reading via `schema.Parse`, stable topological sort, nullable-cycle resolution, ~15 inference rules with coherence (FirstName+LastName+Email agree; UpdatedAt ≥ CreatedAt; Total = Price × Quantity), basic long tail, deterministic seed, PostgreSQL + MySQL + SQLite, `Seed`, `Explain`, `SeedCoverage`.
 
 **v2 — depth**
 ent adapter (proves the contract). Polymorphic generation. Temporal clustering, null rates, dirty-data mode. `autoseed explain` CLI. Benchmarks.

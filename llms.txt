@@ -40,6 +40,13 @@ no connection needed. `models` is the exhaustive set of GORM structs to include:
 keeps no registry of every struct it has ever used, unlike an EF Core `DbContext`, so the list is
 stated explicitly on every call.
 
+The `autoseed/inference` package (~15 value-generation rules, gofakeit-backed) is built and
+tested but not yet wired to any public `gormseed` function — nothing calls it from `Explain` or
+from a `Seed` that doesn't exist yet. One rule runs unconditionally, with no opt-in: any string
+field named `Cpf` or `Cnpj` (case-insensitive suffix, any project) generates a Brazilian document
+number with a valid check digit. This is not locale-gated — there is no locale mechanism yet — so
+a non-Brazilian project with a coincidentally matching field name gets Brazilian-format data.
+
 ## Planned, not implemented yet
 
 These identifiers do not exist in the module. Do not generate calls to them.

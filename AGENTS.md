@@ -40,7 +40,7 @@ Seven stages; new code belongs to exactly one:
 - No global `math/rand`, no `time.Now()` in the generation path.
 - Generation is sequential; insertion may batch. Changing generated output for a given seed is a breaking change (major — and in Go, a new major means a new import path, so avoid).
 
-**The core knows no ORM.** Root package depends on stdlib + gofakeit only. `import "gorm.io/gorm"` outside `/gormseed` means the modeling is wrong — stop and refactor. Adapters implement `ModelSource`; everything downstream consumes only that contract.
+**The core knows no ORM, and no value generator.** Root package depends on stdlib only. gofakeit lives in `/inference`, never the root — the same reason the .NET sibling keeps Bogus out of `AutoSeed.Core`: the graph and cycle engine stay testable without a value generator. `import "gorm.io/gorm"` or `import ".../gofakeit"` outside their own package means the modeling is wrong — stop and refactor. Adapters implement `ModelSource`; everything downstream consumes only that contract.
 
 **Never re-derive GORM conventions by hand.** Use `schema.Parse` and `schema.Relationships`. GORM resolves; we read.
 
