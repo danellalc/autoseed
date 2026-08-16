@@ -14,8 +14,12 @@ type AddressRule struct{}
 func (AddressRule) Priority() int { return 0 }
 
 // CanInfer matches a string field ending in Street, StreetName, Address or
-// City.
+// City, except EmailAddress: that suffix also ends in Address, but belongs
+// to EmailRule.
 func (AddressRule) CanInfer(field autoseed.Field) bool {
+	if hasSuffix(field.Name, "EmailAddress") {
+		return false
+	}
 	return isKind(field.Type, reflect.String) && hasSuffix(field.Name, "Street", "StreetName", "Address", "City")
 }
 

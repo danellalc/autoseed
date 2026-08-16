@@ -42,3 +42,29 @@ func TestPhoneRule_ProducesNonEmptyValue(t *testing.T) {
 		t.Fatal("Phone must not be empty")
 	}
 }
+
+// TestGenerateRow_EmailAddressNotClaimedByAddressRule guards a real bug:
+// "EmailAddress" ends in "Address", so AddressRule (Priority 0) used to
+// claim it before EmailRule (Priority 1, and the rule EmailRule's own
+// godoc names as supported) ever got a turn, silently producing a street
+// name instead of an email.
+func TestGenerateRow_EmailAddressNotClaimedByAddressRule(t *testing.T) {
+	entity := autoseed.Entity{
+		Name: "Customer",
+		Fields: []autoseed.Field{
+			{Name: "FirstName", Type: reflect.TypeOf("")},
+			{Name: "LastName", Type: reflect.TypeOf("")},
+			{Name: "EmailAddress", Type: reflect.TypeOf("")},
+		},
+	}
+
+	values, err := inference.NewDefaultGenerator().GenerateRow(entity, autoseed.NewSeededSource(42))
+	if err != nil {
+		t.Fatalf("GenerateRow: %v", err)
+	}
+
+	value := values["EmailAddress"].(string)
+	if !strings.Contains(value, "@") {
+		t.Fatalf("EmailAddress = %q, want a valid-looking email address", value)
+	}
+}

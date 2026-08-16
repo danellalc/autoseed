@@ -124,6 +124,51 @@ func TestGenerateRow_UnsupportedFieldFailsNamed(t *testing.T) {
 	}
 }
 
+// TestGenerateRow_NilFieldTypeFailsNamedNotPanics guards CanInfer's nil
+// guard (match.go's isKind): a ModelSource that leaves Field.Type unset —
+// legitimate, since the inference package is meant to be usable without
+// gormseed — must fail as ErrUnsupportedField, never panic.
+func TestGenerateRow_NilFieldTypeFailsNamedNotPanics(t *testing.T) {
+	entity := autoseed.Entity{
+		Name:   "Widget",
+		Fields: []autoseed.Field{{Name: "Mystery"}},
+	}
+
+	_, err := inference.NewDefaultGenerator().GenerateRow(entity, autoseed.NewSeededSource(1))
+	if !errors.Is(err, autoseed.ErrUnsupportedField) {
+		t.Fatalf("got %v, want ErrUnsupportedField", err)
+	}
+}
+
+func TestDefaultGenerator_DifferentRowsAndEntitiesDiverge(t *testing.T) {
+	entity := autoseed.Entity{
+		Name:   "Widget",
+		Fields: []autoseed.Field{{Name: "Name", Type: reflect.TypeOf("")}},
+	}
+	root := autoseed.NewSeededSource(42)
+	gen := inference.NewDefaultGenerator()
+
+	row0, err := gen.GenerateRow(entity, root.Entity(entity.Name).Row(0))
+	if err != nil {
+		t.Fatalf("GenerateRow row 0: %v", err)
+	}
+	row1, err := gen.GenerateRow(entity, root.Entity(entity.Name).Row(1))
+	if err != nil {
+		t.Fatalf("GenerateRow row 1: %v", err)
+	}
+	if row0["Name"] == row1["Name"] {
+		t.Fatalf("row 0 and row 1 of %s both produced %v, want different values", entity.Name, row0["Name"])
+	}
+
+	other, err := gen.GenerateRow(autoseed.Entity{Name: "Gadget", Fields: entity.Fields}, root.Entity("Gadget").Row(0))
+	if err != nil {
+		t.Fatalf("GenerateRow other entity: %v", err)
+	}
+	if row0["Name"] == other["Name"] {
+		t.Fatalf("Widget row 0 and Gadget row 0 both produced %v, want different values", row0["Name"])
+	}
+}
+
 func equalStrings(a, b []string) bool {
 	if len(a) != len(b) {
 		return false
