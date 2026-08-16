@@ -1,12 +1,15 @@
 package gormseed
 
 import (
+	"errors"
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/danellalc/autoseed"
 	"gorm.io/gorm"
+	"gorm.io/gorm/utils/tests"
 )
 
 type Author struct {
@@ -76,6 +79,33 @@ type Shipment struct {
 	LineOrderID int
 	LineLineNo  int
 	OrderLine   OrderLine `gorm:"foreignKey:LineOrderID,LineLineNo;references:OrderID,LineNo"`
+}
+
+// TargetBA's primary key is declared B-then-A, the reverse of the order
+// ChildAB's foreignKey/references tag lists them in (A,B). Fields must
+// still come out ordered to match TargetBA's own declaration (B,A), not
+// the tag's.
+type TargetBA struct {
+	B int `gorm:"primaryKey"`
+	A int `gorm:"primaryKey"`
+}
+
+type ChildAB struct {
+	ChildID int `gorm:"primaryKey"`
+	FA      int
+	FB      int
+	Target  TargetBA `gorm:"foreignKey:FA,FB;references:A,B"`
+}
+
+type Profile struct {
+	ID     int `gorm:"primaryKey"`
+	UserID int
+	Bio    string
+}
+
+type User struct {
+	ID      int `gorm:"primaryKey"`
+	Profile Profile
 }
 
 func entityNamed(t *testing.T, entities []autoseed.Entity, name string) autoseed.Entity {
@@ -192,6 +222,15 @@ func TestRead_ManyToMany(t *testing.T) {
 		t.Fatalf("join table references must be required, got Post.Nullable=%v Tag.Nullable=%v", toPost.Nullable, toTag.Nullable)
 	}
 
+	postID := fieldNamed(t, join, "PostID")
+	tagID := fieldNamed(t, join, "TagID")
+	if !postID.PrimaryKey || !tagID.PrimaryKey {
+		t.Fatalf("join table key columns not marked PrimaryKey: PostID=%+v TagID=%+v", postID, tagID)
+	}
+	if postID.Nullable || tagID.Nullable {
+		t.Fatalf("join table key columns must not be Nullable: PostID=%+v TagID=%+v", postID, tagID)
+	}
+
 	// The join table is discovered from both Post.Tags and Tag.Posts; it
 	// must be synthesized exactly once, not twice.
 	count := 0
@@ -295,6 +334,135 @@ func TestRead_CompositePrimaryAndForeignKey(t *testing.T) {
 	if !equalStrings(ref.Fields, []string{"LineOrderID", "LineLineNo"}) {
 		t.Fatalf("Shipment -> OrderLine Fields = %v, want [LineOrderID LineLineNo]", ref.Fields)
 	}
+}
+
+// TestRead_CompositeReferenceOrderMatchesTargetDeclaration guards a real
+// bug: foreignKeyFields used to return fields in the references: tag's own
+// order, not TargetBA's declared primary key order. ChildAB's tag lists
+// A before B, but TargetBA declares B before A, so the FK fields (FA, FB)
+// must come out as [FB, FA] to line up positionally with TargetBA's own
+// Fields order.
+func TestRead_CompositeReferenceOrderMatchesTargetDeclaration(t *testing.T) {
+	entities, _, err := read(nil, []any{&ChildAB{}, &TargetBA{}})
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+
+	target := entityNamed(t, entities, "TargetBA")
+	if target.Fields[0].Name != "B" || target.Fields[1].Name != "A" {
+		t.Fatalf("TargetBA.Fields = %v, want [B A] (declaration order)", fieldNames(target.Fields))
+	}
+
+	child := entityNamed(t, entities, "ChildAB")
+	ref := referenceTo(t, child, "TargetBA")
+	if !equalStrings(ref.Fields, []string{"FB", "FA"}) {
+		t.Fatalf("ChildAB -> TargetBA Fields = %v, want [FB FA] (matching TargetBA's own B,A order)", ref.Fields)
+	}
+}
+
+func TestRead_OneDirectionalHasOne(t *testing.T) {
+	entities, _, err := read(nil, []any{&User{}, &Profile{}})
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+
+	profile := entityNamed(t, entities, "Profile")
+	ref := referenceTo(t, profile, "User")
+	if !equalStrings(ref.Fields, []string{"UserID"}) {
+		t.Fatalf("Profile -> User Fields = %v, want [UserID]", ref.Fields)
+	}
+}
+
+func TestRead_SoftDeleteNotGuessedFromFieldName(t *testing.T) {
+	type PlainTimestamp struct {
+		ID        int `gorm:"primaryKey"`
+		DeletedAt time.Time
+	}
+
+	entities, _, err := read(nil, []any{&PlainTimestamp{}})
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+
+	deletedAt := fieldNamed(t, entityNamed(t, entities, "PlainTimestamp"), "DeletedAt")
+	if deletedAt.SoftDelete {
+		t.Fatal("a plain time.Time field named DeletedAt must not be marked SoftDelete: detection must go through schema.QueryClausesInterface, never the field name")
+	}
+}
+
+func TestRead_FieldUnique(t *testing.T) {
+	type UniqueEmail struct {
+		ID    int    `gorm:"primaryKey"`
+		Email string `gorm:"unique"`
+	}
+
+	entities, _, err := read(nil, []any{&UniqueEmail{}})
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+
+	email := fieldNamed(t, entityNamed(t, entities, "UniqueEmail"), "Email")
+	if !email.Unique {
+		t.Fatal("Email has a unique tag, want Field.Unique=true")
+	}
+	id := fieldNamed(t, entityNamed(t, entities, "UniqueEmail"), "ID")
+	if id.Unique {
+		t.Fatal("ID has no unique tag, want Field.Unique=false")
+	}
+}
+
+func TestExplain_OmittedModelReturnsUnknownReference(t *testing.T) {
+	_, err := Explain(nil, []any{&Post{}})
+	if !errors.Is(err, autoseed.ErrUnknownReference) {
+		t.Fatalf("got %v, want ErrUnknownReference for a Post whose Author was not included", err)
+	}
+}
+
+// TestRead_ManyToManyWithExplicitJoinStruct guards a real bug: read() used
+// to parse with a fresh cache on every call, so a join-table struct
+// registered on db via SetupJoinTable — and any extra column it declares
+// beyond the two foreign keys — was invisible, silently replaced by the
+// bare two-column table GORM synthesizes by default.
+func TestRead_ManyToManyWithExplicitJoinStruct(t *testing.T) {
+	type Skill struct {
+		ID uint `gorm:"primaryKey"`
+	}
+	type Person struct {
+		ID     uint    `gorm:"primaryKey"`
+		Skills []Skill `gorm:"many2many:person_skill_links;"`
+	}
+	type PersonSkillLink struct {
+		PersonID uint `gorm:"primaryKey"`
+		SkillID  uint `gorm:"primaryKey"`
+		Level    int  `gorm:"not null"`
+	}
+
+	db, err := gorm.Open(tests.DummyDialector{}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("gorm.Open: %v", err)
+	}
+	if err := db.SetupJoinTable(&Person{}, "Skills", &PersonSkillLink{}); err != nil {
+		t.Fatalf("SetupJoinTable: %v", err)
+	}
+
+	entities, _, err := read(db, []any{&Person{}, &Skill{}})
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+
+	join := entityNamed(t, entities, "PersonSkillLink")
+	level := fieldNamed(t, join, "Level")
+	if level.Nullable {
+		t.Fatal("Level has a not-null tag, want Nullable=false")
+	}
+}
+
+func fieldNames(fields []autoseed.Field) []string {
+	names := make([]string, len(fields))
+	for i, f := range fields {
+		names[i] = f.Name
+	}
+	return names
 }
 
 func TestRead_DuplicateModelInListIsIdempotent(t *testing.T) {

@@ -12,19 +12,13 @@ import (
 	"gorm.io/gorm/schema"
 )
 
-// inferredReference is a reference discovered from the owning side of a
-// HasMany or HasOne relationship, attributed to the child entity that
-// actually carries the foreign key column.
 type inferredReference struct {
 	fields []string
 	target string
 }
 
 func read(db *gorm.DB, models []any) ([]autoseed.Entity, []autoseed.SkipReason, error) {
-	namer := namingStrategy(db)
-	cache := &sync.Map{}
-
-	schemas, order, err := parseAll(models, cache, namer)
+	schemas, order, err := parseAll(db, models)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -52,7 +46,7 @@ func read(db *gorm.DB, models []any) ([]autoseed.Entity, []autoseed.SkipReason, 
 				continue
 			}
 
-			fields, err := foreignKeyFields(r)
+			fields, err := foreignKeyFields(r, r.Schema)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -105,22 +99,14 @@ func read(db *gorm.DB, models []any) ([]autoseed.Entity, []autoseed.SkipReason, 
 	return entities, skipped, nil
 }
 
-func namingStrategy(db *gorm.DB) schema.Namer {
-	if db != nil && db.NamingStrategy != nil {
-		return db.NamingStrategy
-	}
-	return schema.NamingStrategy{}
-}
+func parseAll(db *gorm.DB, models []any) (map[string]*schema.Schema, []string, error) {
+	parse := parser(db)
 
-// parseAll parses every model into its schema, in models order, skipping a
-// struct type already seen. The returned order is the deduplicated
-// discovery order, used later so output does not depend on map iteration.
-func parseAll(models []any, cache *sync.Map, namer schema.Namer) (map[string]*schema.Schema, []string, error) {
 	schemas := make(map[string]*schema.Schema, len(models))
 	order := make([]string, 0, len(models))
 
 	for _, model := range models {
-		s, err := schema.Parse(model, cache, namer)
+		s, err := parse(model)
 		if err != nil {
 			return nil, nil, fmt.Errorf("gormseed: parsing %T: %w", model, err)
 		}
@@ -134,11 +120,23 @@ func parseAll(models []any, cache *sync.Map, namer schema.Namer) (map[string]*sc
 	return schemas, order, nil
 }
 
-// childOwnedRelationships returns the relationships whose foreign key
-// column lives on the related entity rather than on s: HasMany and HasOne.
-// This is how the common one-directional shape — a parent declaring
-// `Items []Item`, with no reciprocal field on Item — surfaces at all: Item
-// itself has no BelongsTo entry for it.
+func parser(db *gorm.DB) func(any) (*schema.Schema, error) {
+	if db == nil {
+		cache := &sync.Map{}
+		namer := schema.NamingStrategy{}
+		return func(model any) (*schema.Schema, error) {
+			return schema.Parse(model, cache, namer)
+		}
+	}
+	return func(model any) (*schema.Schema, error) {
+		stmt := &gorm.Statement{DB: db}
+		if err := stmt.Parse(model); err != nil {
+			return nil, err
+		}
+		return stmt.Schema, nil
+	}
+}
+
 func childOwnedRelationships(s *schema.Schema) []*schema.Relationship {
 	rels := make([]*schema.Relationship, 0, len(s.Relationships.HasMany)+len(s.Relationships.HasOne))
 	rels = append(rels, s.Relationships.HasMany...)
@@ -146,27 +144,30 @@ func childOwnedRelationships(s *schema.Schema) []*schema.Relationship {
 	return rels
 }
 
-// foreignKeyFields extracts the foreign key column names from a
-// relationship's references, in declaration order: one field for a simple
-// foreign key, several for a composite one.
-func foreignKeyFields(r *schema.Relationship) ([]string, error) {
-	fields := make([]string, 0, len(r.References))
+func foreignKeyFields(r *schema.Relationship, target *schema.Schema) ([]string, error) {
+	byPrimaryKey := make(map[string]string, len(r.References))
 	for _, ref := range r.References {
-		if ref.ForeignKey == nil {
+		if ref.ForeignKey == nil || ref.PrimaryKey == nil {
 			continue
 		}
-		fields = append(fields, ref.ForeignKey.Name)
+		byPrimaryKey[ref.PrimaryKey.Name] = ref.ForeignKey.Name
 	}
-	if len(fields) == 0 {
+	if len(byPrimaryKey) == 0 {
 		return nil, fmt.Errorf("gormseed: relationship %q on %q has no foreign key fields", r.Name, r.Schema.Name)
+	}
+
+	fields := make([]string, 0, len(byPrimaryKey))
+	for _, pk := range target.PrimaryFields {
+		if fk, ok := byPrimaryKey[pk.Name]; ok {
+			fields = append(fields, fk)
+		}
+	}
+	if len(fields) != len(byPrimaryKey) {
+		return nil, fmt.Errorf("gormseed: relationship %q on %q: foreign key fields do not match %q's own primary key fields", r.Name, r.Schema.Name, target.Name)
 	}
 	return fields, nil
 }
 
-// buildEntity translates one parsed schema into an autoseed.Entity.
-// inferred carries references discovered from the other side of a
-// one-directional HasMany or HasOne, merged in only when s's own BelongsTo
-// relationships did not already report the same reference.
 func buildEntity(s *schema.Schema, inferred []inferredReference) (autoseed.Entity, error) {
 	byName := make(map[string]*schema.Field, len(s.Fields))
 	fields := make([]autoseed.Field, 0, len(s.Fields))
@@ -182,7 +183,7 @@ func buildEntity(s *schema.Schema, inferred []inferredReference) (autoseed.Entit
 	var refs []autoseed.Reference
 
 	for _, r := range s.Relationships.BelongsTo {
-		fkFields, err := foreignKeyFields(r)
+		fkFields, err := foreignKeyFields(r, r.FieldSchema)
 		if err != nil {
 			return autoseed.Entity{}, err
 		}
@@ -223,8 +224,6 @@ func referenceKey(ref autoseed.Reference) string {
 	return ref.Target + ">" + strings.Join(ref.Fields, "+")
 }
 
-// fieldsNullable reports whether every named field allows null: a
-// composite reference is only as nullable as its strictest column.
 func fieldsNullable(byName map[string]*schema.Field, fieldNames []string) bool {
 	for _, name := range fieldNames {
 		f, ok := byName[name]
@@ -235,21 +234,20 @@ func fieldsNullable(byName map[string]*schema.Field, fieldNames []string) bool {
 	return true
 }
 
-// manyToManyJoinEntity synthesizes the join table a many2many relationship
-// implies as its own autoseed.Entity, with a required reference to each
-// side. GORM reports the same join table symmetrically from both related
-// schemas; the caller only needs to call this once, for whichever side it
-// reaches first.
 func manyToManyJoinEntity(r *schema.Relationship) (autoseed.Entity, error) {
 	var fields []autoseed.Field
-	var refs []autoseed.Reference
+	for _, f := range r.JoinTable.Fields {
+		if f.DBName == "" {
+			continue
+		}
+		fields = append(fields, fieldFrom(f))
+	}
 
+	var refs []autoseed.Reference
 	for _, ref := range r.References {
 		if ref.ForeignKey == nil || ref.PrimaryKey == nil {
 			continue
 		}
-		fields = append(fields, fieldFrom(ref.ForeignKey))
-
 		target := r.FieldSchema.Name
 		if ref.OwnPrimaryKey {
 			target = r.Schema.Name
@@ -282,9 +280,6 @@ func fieldFrom(f *schema.Field) autoseed.Field {
 	}
 }
 
-// isSoftDelete reports whether f's type is the one GORM itself uses to
-// decide a field filters every query — gorm.DeletedAt and anything with
-// the same shape, never guessed from the field's name.
 func isSoftDelete(f *schema.Field) bool {
 	value := reflect.New(f.FieldType).Interface()
 	_, ok := value.(schema.QueryClausesInterface)
