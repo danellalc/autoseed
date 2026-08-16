@@ -8,6 +8,7 @@ require (
 )
 
 require (
+	github.com/brianvoe/gofakeit/v7 v7.15.0 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
 	golang.org/x/text v0.20.0 // indirect
