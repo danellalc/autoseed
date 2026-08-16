@@ -5,9 +5,6 @@ import (
 	"strings"
 )
 
-// graphEdge is one foreign key reference in the dependency graph: from
-// depends on to, meaning a row of from cannot be inserted before a row of
-// to exists.
 type graphEdge struct {
 	from     string
 	to       string
@@ -23,12 +20,16 @@ type DependencyGraph struct {
 }
 
 // NewDependencyGraph builds a DependencyGraph from entities. It returns
-// ErrUnknownReference if any Reference.Target does not match an Entity.Name
-// in entities.
+// ErrDuplicateEntity if two entities share a Name, ErrUnknownReference if
+// any Reference.Target does not match an Entity.Name in entities, and
+// ErrInvalidReference if a Reference names no Fields.
 func NewDependencyGraph(entities []Entity) (*DependencyGraph, error) {
 	names := make([]string, 0, len(entities))
 	known := make(map[string]bool, len(entities))
 	for _, entity := range entities {
+		if known[entity.Name] {
+			return nil, duplicateEntityError(entity.Name)
+		}
 		names = append(names, entity.Name)
 		known[entity.Name] = true
 	}
@@ -37,6 +38,9 @@ func NewDependencyGraph(entities []Entity) (*DependencyGraph, error) {
 	var edges []graphEdge
 	for _, entity := range entities {
 		for _, ref := range entity.References {
+			if len(ref.Fields) == 0 {
+				return nil, invalidReferenceError(entity.Name, ref.Target)
+			}
 			if !known[ref.Target] {
 				return nil, unknownReferenceError(entity.Name, ref.Fields, ref.Target)
 			}
@@ -86,11 +90,6 @@ func (g *DependencyGraph) Resolve() (*TopologicalSortResult, error) {
 	}, nil
 }
 
-// stableTopologicalSort orders names so that, for every edge from->to in
-// edges, to appears before from. edges must already be acyclic. Among
-// names with no remaining unresolved dependency, the lexicographically
-// smallest is placed next, so the result never depends on map or slice
-// iteration order.
 func stableTopologicalSort(names []string, edges []graphEdge) []string {
 	dependencies := make(map[string]map[string]bool, len(names))
 	dependents := make(map[string][]string, len(names))

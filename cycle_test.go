@@ -2,6 +2,7 @@ package autoseed_test
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/danellalc/autoseed"
@@ -110,6 +111,60 @@ func TestResolve_RequiredCrossEntityCycle(t *testing.T) {
 	_, err = graph.Resolve()
 	if !errors.Is(err, autoseed.ErrUnsatisfiableCycle) {
 		t.Fatalf("got %v, want ErrUnsatisfiableCycle", err)
+	}
+}
+
+// TestResolve_CycleErrorNamesRealPath guards against naming the cycle by
+// alphabetically sorting its members: A, B, C sorted alphabetically already
+// reads A->B->C, which would hide a real A->C->B->A cycle behind a
+// plausible but false chain. The three entities here are deliberately
+// wired so the real cycle (A->C->B->A) differs from alphabetical order.
+func TestResolve_CycleErrorNamesRealPath(t *testing.T) {
+	graph, err := autoseed.NewDependencyGraph([]autoseed.Entity{
+		{Name: "A", References: []autoseed.Reference{{Fields: []string{"CID"}, Target: "C"}}},
+		{Name: "C", References: []autoseed.Reference{{Fields: []string{"BID"}, Target: "B"}}},
+		{Name: "B", References: []autoseed.Reference{{Fields: []string{"AID"}, Target: "A"}}},
+	})
+	if err != nil {
+		t.Fatalf("NewDependencyGraph: %v", err)
+	}
+
+	_, err = graph.Resolve()
+	if !errors.Is(err, autoseed.ErrUnsatisfiableCycle) {
+		t.Fatalf("got %v, want ErrUnsatisfiableCycle", err)
+	}
+	want := "A -> C -> B -> A"
+	if !strings.Contains(err.Error(), want) {
+		t.Fatalf("error = %q, want it to contain the real cycle path %q", err.Error(), want)
+	}
+}
+
+func TestResolve_DeduplicatesIdenticalDeferredReferences(t *testing.T) {
+	graph, err := autoseed.NewDependencyGraph([]autoseed.Entity{
+		{
+			Name: "A",
+			References: []autoseed.Reference{
+				{Fields: []string{"BID"}, Target: "B", Nullable: true},
+				{Fields: []string{"BID"}, Target: "B", Nullable: true},
+			},
+		},
+		{
+			Name: "B",
+			References: []autoseed.Reference{
+				{Fields: []string{"AID"}, Target: "A", Nullable: false},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewDependencyGraph: %v", err)
+	}
+
+	result, err := graph.Resolve()
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if len(result.Deferred) != 1 {
+		t.Fatalf("Deferred = %v, want exactly one entry for the duplicated reference", result.Deferred)
 	}
 }
 

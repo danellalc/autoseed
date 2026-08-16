@@ -40,7 +40,7 @@ func Explain(source ModelSource, skipped ...SkipReason) (*Plan, error) {
 		return nil, err
 	}
 
-	result, err := graph.Resolve()
+	sorted, err := graph.Resolve()
 	if err != nil {
 		return nil, err
 	}
@@ -54,8 +54,8 @@ func Explain(source ModelSource, skipped ...SkipReason) (*Plan, error) {
 	})
 
 	return &Plan{
-		Order:    result.Order,
-		Deferred: result.Deferred,
+		Order:    sorted.Order,
+		Deferred: sorted.Deferred,
 		Skipped:  sortedSkipped,
 	}, nil
 }
@@ -64,26 +64,34 @@ func Explain(source ModelSource, skipped ...SkipReason) (*Plan, error) {
 // references, then skipped constructs. A section with nothing to show is
 // omitted.
 func (p *Plan) Report() string {
-	var b strings.Builder
+	var sections []string
 
-	b.WriteString("Insertion order:\n")
-	for i, name := range p.Order {
-		fmt.Fprintf(&b, "  %d. %s\n", i+1, name)
+	if len(p.Order) > 0 {
+		var b strings.Builder
+		b.WriteString("Insertion order:\n")
+		for i, name := range p.Order {
+			fmt.Fprintf(&b, "  %d. %s\n", i+1, name)
+		}
+		sections = append(sections, b.String())
 	}
 
 	if len(p.Deferred) > 0 {
-		b.WriteString("\nDeferred (second-pass) references:\n")
+		var b strings.Builder
+		b.WriteString("Deferred (second-pass) references:\n")
 		for _, d := range p.Deferred {
 			fmt.Fprintf(&b, "  %s.%s -> %s\n", d.Entity, strings.Join(d.Fields, "+"), d.Target)
 		}
+		sections = append(sections, b.String())
 	}
 
 	if len(p.Skipped) > 0 {
-		b.WriteString("\nSkipped:\n")
+		var b strings.Builder
+		b.WriteString("Skipped:\n")
 		for _, s := range p.Skipped {
 			fmt.Fprintf(&b, "  %s.%s: %s\n", s.Entity, s.Field, s.Reason)
 		}
+		sections = append(sections, b.String())
 	}
 
-	return b.String()
+	return strings.Join(sections, "\n")
 }

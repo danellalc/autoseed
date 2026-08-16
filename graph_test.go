@@ -21,6 +21,26 @@ func TestNewDependencyGraph_UnknownReference(t *testing.T) {
 	}
 }
 
+func TestNewDependencyGraph_DuplicateEntity(t *testing.T) {
+	_, err := autoseed.NewDependencyGraph([]autoseed.Entity{
+		{Name: "Customer"},
+		{Name: "Customer"},
+	})
+	if !errors.Is(err, autoseed.ErrDuplicateEntity) {
+		t.Fatalf("got %v, want ErrDuplicateEntity", err)
+	}
+}
+
+func TestNewDependencyGraph_InvalidReference(t *testing.T) {
+	_, err := autoseed.NewDependencyGraph([]autoseed.Entity{
+		{Name: "Order", References: []autoseed.Reference{{Target: "Customer"}}},
+		{Name: "Customer"},
+	})
+	if !errors.Is(err, autoseed.ErrInvalidReference) {
+		t.Fatalf("got %v, want ErrInvalidReference", err)
+	}
+}
+
 func TestResolve_Order(t *testing.T) {
 	tests := []struct {
 		name     string

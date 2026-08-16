@@ -61,6 +61,16 @@ func TestExplain_ReportOmitsEmptySections(t *testing.T) {
 	}
 }
 
+func TestExplain_ReportOmitsInsertionOrderWhenEmpty(t *testing.T) {
+	plan, err := autoseed.Explain(fakeSource{entities: nil})
+	if err != nil {
+		t.Fatalf("Explain: %v", err)
+	}
+	if got := plan.Report(); got != "" {
+		t.Fatalf("Report() = %q, want empty string for a model with no entities", got)
+	}
+}
+
 func TestExplain_SkippedSortedRegardlessOfInputOrder(t *testing.T) {
 	source := fakeSource{entities: []autoseed.Entity{{Name: "Video"}, {Name: "Comment"}}}
 

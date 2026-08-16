@@ -5,12 +5,9 @@ import (
 	"strings"
 )
 
-// resolveCycles removes every cycle from edges. A cycle with at least one
-// nullable edge is broken by deferring all of its nullable edges to a
-// second pass; a cycle made entirely of required edges is unsatisfiable and
-// returns ErrUnsatisfiableCycle naming every entity in it.
-func resolveCycles(names []string, edges []graphEdge) (active []graphEdge, deferred []DeferredReference, err error) {
-	active = append([]graphEdge(nil), edges...)
+func resolveCycles(names []string, edges []graphEdge) ([]graphEdge, []DeferredReference, error) {
+	active := append([]graphEdge(nil), edges...)
+	var deferred []DeferredReference
 
 	for {
 		components := stronglyConnectedComponents(names, active)
@@ -33,14 +30,9 @@ func resolveCycles(names []string, edges []graphEdge) (active []graphEdge, defer
 			}
 			foundCycle = true
 
-			var nullable []graphEdge
-			for _, edge := range internal {
-				if edge.nullable {
-					nullable = append(nullable, edge)
-				}
-			}
+			nullable := dedupeEdges(filterNullable(internal))
 			if len(nullable) == 0 {
-				return nil, nil, unsatisfiableCycleError(component)
+				return nil, nil, unsatisfiableCycleError(findCycle(component, internal))
 			}
 
 			active = removeEdges(active, nullable)
@@ -63,6 +55,30 @@ func resolveCycles(names []string, edges []graphEdge) (active []graphEdge, defer
 	return active, deferred, nil
 }
 
+func filterNullable(edges []graphEdge) []graphEdge {
+	var nullable []graphEdge
+	for _, edge := range edges {
+		if edge.nullable {
+			nullable = append(nullable, edge)
+		}
+	}
+	return nullable
+}
+
+func dedupeEdges(edges []graphEdge) []graphEdge {
+	seen := make(map[string]bool, len(edges))
+	out := make([]graphEdge, 0, len(edges))
+	for _, edge := range edges {
+		key := edgeKey(edge)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		out = append(out, edge)
+	}
+	return out
+}
+
 func removeEdges(edges, remove []graphEdge) []graphEdge {
 	skip := make(map[string]bool, len(remove))
 	for _, edge := range remove {
@@ -81,11 +97,49 @@ func edgeKey(edge graphEdge) string {
 	return edge.from + ">" + edge.to + ">" + strings.Join(edge.fields, "+")
 }
 
-// stronglyConnectedComponents partitions names into strongly connected
-// components using Tarjan's algorithm, processing nodes and each node's
-// outgoing edges in sorted order so the result never depends on map
-// iteration order. A component of size one with no self-loop is not a
-// cycle; the caller decides that by checking for internal edges.
+func findCycle(component []string, edges []graphEdge) []string {
+	adjacency := make(map[string][]string, len(component))
+	for _, edge := range edges {
+		adjacency[edge.from] = append(adjacency[edge.from], edge.to)
+	}
+	for from := range adjacency {
+		sort.Strings(adjacency[from])
+	}
+
+	onPath := make(map[string]int, len(component))
+	done := make(map[string]bool, len(component))
+	var path []string
+
+	var walk func(v string) []string
+	walk = func(v string) []string {
+		onPath[v] = len(path)
+		path = append(path, v)
+
+		for _, w := range adjacency[v] {
+			if idx, active := onPath[w]; active {
+				cycle := append([]string(nil), path[idx:]...)
+				return append(cycle, w)
+			}
+			if done[w] {
+				continue
+			}
+			if found := walk(w); found != nil {
+				return found
+			}
+		}
+
+		path = path[:len(path)-1]
+		delete(onPath, v)
+		done[v] = true
+		return nil
+	}
+
+	if cycle := walk(component[0]); cycle != nil {
+		return cycle
+	}
+	return component
+}
+
 func stronglyConnectedComponents(names []string, edges []graphEdge) [][]string {
 	adjacency := make(map[string][]string, len(names))
 	for _, edge := range edges {

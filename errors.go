@@ -15,10 +15,27 @@ var ErrUnknownReference = errors.New("autoseed: reference targets an unknown ent
 // satisfy every required foreign key at once.
 var ErrUnsatisfiableCycle = errors.New("autoseed: unsatisfiable required foreign key cycle")
 
+// ErrDuplicateEntity is returned when two or more Entity values in a model
+// share the same Name: a ModelSource bug, since the graph cannot tell them
+// apart.
+var ErrDuplicateEntity = errors.New("autoseed: duplicate entity name")
+
+// ErrInvalidReference is returned when a Reference names no Fields: there
+// is no column for it to mean anything.
+var ErrInvalidReference = errors.New("autoseed: reference names no fields")
+
 func unknownReferenceError(entity string, fields []string, target string) error {
 	return fmt.Errorf("%w: %s.%s references %q", ErrUnknownReference, entity, strings.Join(fields, "+"), target)
 }
 
-func unsatisfiableCycleError(entities []string) error {
-	return fmt.Errorf("%w: %s", ErrUnsatisfiableCycle, strings.Join(entities, " -> "))
+func unsatisfiableCycleError(cycle []string) error {
+	return fmt.Errorf("%w: %s", ErrUnsatisfiableCycle, strings.Join(cycle, " -> "))
+}
+
+func duplicateEntityError(name string) error {
+	return fmt.Errorf("%w: %q", ErrDuplicateEntity, name)
+}
+
+func invalidReferenceError(entity, target string) error {
+	return fmt.Errorf("%w: %s references %q with no fields named", ErrInvalidReference, entity, target)
 }
