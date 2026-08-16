@@ -4,9 +4,15 @@ Seed your database from your ORM model. One call, full referential integrity, re
 
 From the author of [EFCore.AutoSeed](https://github.com/danellalc/EFCore.AutoSeed) — the same idea, native to Go.
 
-> Status: in development. This README describes the design being built — see the [roadmap](ARCHITECTURE.md#roadmap).
-
 > [GIF placeholder — will be recorded from the first real run before launch.]
+
+## Status
+
+In development. This README describes the full design being built — see the [roadmap](ARCHITECTURE.md#roadmap) for what ships when.
+
+**Works today:** reading a GORM model (associations, embedded structs, soft-delete, polymorphic, composite keys), deriving insertion order, resolving nullable cycles, and `gormseed.Explain` — printing that plan without writing anything.
+
+**Not built yet:** value generation, `gormseed.Seed`, `gormseed.SeedCoverage`, and every `autoseed.With*` option. Code blocks below that use them are the design, marked as such inline — copy `gormseed.Explain` instead if you want something that runs right now.
 
 ## The problem
 
@@ -21,13 +27,15 @@ And the data you end up with is uniform: every customer with three orders. In pr
 ```go
 import "github.com/danellalc/autoseed/gormseed"
 
+// The design target — not implemented yet, see Status above.
+// gormseed.Explain works today: see "It explains itself" below.
 err := gormseed.Seed(db, []any{&Customer{}, &Order{}, &OrderItem{}},
     autoseed.WithSeed(42),
     autoseed.WithScale(1_000),
 )
 ```
 
-That is the whole API for the common case. GORM keeps no registry of every struct you have used — unlike an EF Core `DbContext`, a `*gorm.DB` cannot tell you what it knows — so the model list is the one thing you state; autoseed works out the insertion order, resolves cycles, infers what each field means, and writes referentially valid rows.
+That is meant to be the whole API for the common case. GORM keeps no registry of every struct you have used — unlike an EF Core `DbContext`, a `*gorm.DB` cannot tell you what it knows — so the model list is the one thing you state; autoseed works out the insertion order, resolves cycles, infers what each field means, and writes referentially valid rows.
 
 Same seed, same data. Always.
 
@@ -67,18 +75,21 @@ Most customers have one order. A few have hundreds. Timestamps cluster on weekda
 
 ### It explains itself before it writes anything
 
+Works today — the one example on this page that actually runs:
+
 ```go
-plan, err := gormseed.Explain(db, []any{&Customer{}, &Order{}, &OrderItem{}}, autoseed.WithSeed(42), autoseed.WithScale(1_000))
+plan, err := gormseed.Explain(db, []any{&Customer{}, &Order{}, &OrderItem{}})
 fmt.Println(plan.Report())
 ```
 
-Prints the insertion order, row counts per entity, which cycles got deferred to a second pass, and which entities were skipped and why. Nothing is written.
+Prints the insertion order, which cycles got deferred to a second pass, and which constructs were skipped and why. Nothing is written. Row counts join the report once `GenerationPlan` ships — see the [roadmap](ARCHITECTURE.md#roadmap).
 
 ### Coverage mode
 
 The opposite of bulk. The *smallest* dataset that exercises everything:
 
 ```go
+// Design target — not implemented yet, see Status above.
 err := gormseed.SeedCoverage(db, []any{&Customer{}, &Order{}, &OrderItem{}})
 ```
 
@@ -106,9 +117,7 @@ GORM first because it is where most Go codebases are. ent second because its sch
 
 ## Validated
 
-Property-based tests assert that for **any** model and **any** seed, every foreign key points at an existing row and no constraint is violated. They run on every commit, against real databases via testcontainers-go.
-
-Also tested against real, public schemas (list to come at launch).
+A property-based test asserts that for **any** model and **any** mix of nullable/required references, the engine either names an unsatisfiable cycle or produces an order that respects every foreign key; it runs on every commit. It exercises the graph and cycle engine directly today — the plan is to run it against real databases via testcontainers-go once `Seed` writes anything, and against real, public schemas by launch.
 
 ## Compared to
 

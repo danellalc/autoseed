@@ -1,16 +1,21 @@
 # autoseed (Go)
 
-> Seeds a database by reading the ORM model. Reads GORM struct schemas (ent support planned), works out insertion order from foreign keys via stable topological sort, resolves nullable cycles in two passes, infers what each field means from its name, and writes referentially valid rows with realistic long-tail distribution. Deterministic: same seed produces the same data. Built on gofakeit for values — adds the relationship layer gofakeit documents as out of scope.
+> Reads a GORM model via schema.Parse, derives foreign-key insertion order (stable topological
+> sort), and resolves nullable cycles in two passes, so nothing about entities, ordering or
+> relationships needs declaring by hand. Status: in development. Today the library reads a model
+> and reports the plan (gormseed.Explain); it does not yet generate or write data.
 
-Unlike every other Go seeder, nothing is declared by hand — no YAML fixtures, no hand-written Seed() loops, no files numbered 01_, 02_ to get foreign-key order right. The model is the specification.
+Unlike every other Go seeder, nothing will be declared by hand once value generation ships — no
+YAML fixtures, no hand-written Seed() loops, no files numbered 01_, 02_ to get foreign-key order
+right. The model is the specification.
 
 Sibling project: EFCore.AutoSeed (same author, same design, .NET).
 
 - Module: `github.com/danellalc/autoseed`
-- Adapters: `autoseed/gormseed` (GORM, v1), `autoseed/entseed` (ent, planned)
-- Databases: PostgreSQL, MySQL, SQLite
+- Adapters: `autoseed/gormseed` (GORM, implemented), `autoseed/entseed` (ent, planned)
+- Databases (once Seed exists): PostgreSQL, MySQL, SQLite
 - License: MIT
-- Status: in development
+- Status: in development — read "Implemented today" vs "Planned" below before generating code
 
 ## Install
 
@@ -18,52 +23,64 @@ Sibling project: EFCore.AutoSeed (same author, same design, .NET).
 go get github.com/danellalc/autoseed
 ```
 
-## Primary API
+## Implemented today
 
 ```go
-import (
-    "github.com/danellalc/autoseed"
-    "github.com/danellalc/autoseed/gormseed"
-)
+import "github.com/danellalc/autoseed/gormseed"
 
 models := []any{&Customer{}, &Order{}, &OrderItem{}}
 
-// Seed 1,000 root rows with a fixed seed. Related entities scale from relationships.
-err := gormseed.Seed(db, models, autoseed.WithSeed(42), autoseed.WithScale(1_000))
-
-// Smallest dataset exercising every enum-like value, nil state and cardinality edge.
-err := gormseed.SeedCoverage(db, models)
-
-// Print the plan without writing anything.
-plan, err := gormseed.Explain(db, models, autoseed.WithSeed(42), autoseed.WithScale(1_000))
+// Reads the model, derives insertion order, resolves nullable cycles. Writes nothing.
+plan, err := gormseed.Explain(db, models)
 fmt.Println(plan.Report())
 ```
 
-`*gorm.DB` keeps no registry of every struct you have used, so `models` is passed explicitly on every call — the one thing GORM cannot answer for you.
+`db` may be `nil`, or not yet connected to a real database — reading a model is pure reflection,
+no connection needed. `models` is the exhaustive set of GORM structs to include: a `*gorm.DB`
+keeps no registry of every struct it has ever used, unlike an EF Core `DbContext`, so the list is
+stated explicitly on every call.
 
-Options (functional): `WithSeed(uint64)`, `WithScale(int)`, `WithLocale("pt_BR")`, `WithNilRate(0.2)`.
+## Planned, not implemented yet
 
-## Guarantees
+These identifiers do not exist in the module. Do not generate calls to them.
 
-- Every generated foreign key references a row that exists.
-- Same seed produces identical data, across runs and machines. Map iteration never affects output.
-- Embedded structs are written as columns, not tables.
-- Soft-deleted rows (gorm.DeletedAt) are generated in small realistic proportion — most rows visible.
-- Unsatisfiable models (required FK cycles) return ErrUnsatisfiableCycle naming the entities, rather than letting the database throw.
-- Unsupported constructs are skipped BY NAME in the Explain report, never silently mis-generated.
+```go
+err := gormseed.Seed(db, models, autoseed.WithSeed(42), autoseed.WithScale(1_000))
+err := gormseed.SeedCoverage(db, models)
+```
+
+Planned functional options, none implemented yet: `WithSeed(uint64)`, `WithScale(int)`,
+`WithLocale("pt_BR")`, `WithNilRate(0.2)`.
+
+## Guarantees (today's scope: reading and Explain)
+
+- Every Reference in a resolved Plan targets an entity present in `models`, or Explain returns
+  `autoseed.ErrUnknownReference` naming what is missing.
+- Same model, same Explain output, across runs and machines — map iteration never affects it.
+- Embedded structs are read as columns, never as their own entity.
+- An unsatisfiable model (a required foreign key cycle) returns `autoseed.ErrUnsatisfiableCycle`
+  naming the real cycle, rather than a database throwing a constraint violation later.
+- Unsupported constructs (polymorphic associations, for now) are skipped BY NAME in the Explain
+  report, never silently misread.
+
+Guarantees about generated data — every foreign key pointing at a real row, soft-deleted rows in
+realistic proportion, deterministic generated values for a given seed — describe the design and
+apply once `Seed` ships. They are not true of any code path today.
 
 ## Common mistakes when using this library
 
-- Do not write a seeder struct or a factory. There is nothing to declare beyond the model list — call gormseed.Seed with the *gorm.DB and the structs to seed.
+- Do not generate a call to `gormseed.Seed` or `gormseed.SeedCoverage` — neither exists yet.
+  `gormseed.Explain` is the one thing that runs today.
+- Do not omit a related model from `models` — `Explain` returns `ErrUnknownReference` naming
+  what's missing, rather than a partial or guessed plan.
 - Do not order entities manually. Order is derived from the model's foreign keys.
-- Do not omit WithSeed if the result must be reproducible in tests.
-- Do not test only against SQLite — it accepts data MySQL and PostgreSQL reject. Use real engines for integration.
-- Polymorphic associations are read but not generated yet (v2); they appear as skipped in Explain.
+- Polymorphic associations are read but not generated; they appear as skipped in the Explain
+  report, never as a reference.
 
 ## Not supported
 
 - ORMs other than GORM (ent is planned; others on demand with traction).
-- Databases other than PostgreSQL, MySQL, SQLite.
+- Databases other than PostgreSQL, MySQL, SQLite, once `Seed` exists.
 - Production data anonymisation. No cloud, no service.
 
 ## Documentation
