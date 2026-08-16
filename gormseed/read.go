@@ -272,6 +272,8 @@ func manyToManyJoinEntity(r *schema.Relationship) (autoseed.Entity, error) {
 func fieldFrom(f *schema.Field) autoseed.Field {
 	return autoseed.Field{
 		Name:          f.Name,
+		Type:          f.IndirectFieldType,
+		Size:          f.Size,
 		Nullable:      !f.PrimaryKey && !f.NotNull,
 		Unique:        f.Unique,
 		PrimaryKey:    f.PrimaryKey,
