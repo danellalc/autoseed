@@ -3,6 +3,7 @@ package autoseed_test
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/danellalc/autoseed"
@@ -43,7 +44,7 @@ func TestResolve_RespectsDependencies(t *testing.T) {
 		byEntity := make(map[string][]autoseed.Reference, n)
 		for _, r := range refs {
 			byEntity[r.from] = append(byEntity[r.from], autoseed.Reference{
-				Name: r.field, Target: r.to, Nullable: r.nullable,
+				Fields: []string{r.field}, Target: r.to, Nullable: r.nullable,
 			})
 		}
 		entities := make([]autoseed.Entity, n)
@@ -73,7 +74,7 @@ func TestResolve_RespectsDependencies(t *testing.T) {
 
 		deferred := make(map[[3]string]bool, len(result.Deferred))
 		for _, d := range result.Deferred {
-			deferred[[3]string{d.Entity, d.Field, d.Target}] = true
+			deferred[[3]string{d.Entity, strings.Join(d.Fields, "+"), d.Target}] = true
 		}
 
 		for _, r := range refs {

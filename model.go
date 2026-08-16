@@ -13,16 +13,21 @@ type Entity struct {
 
 // Field describes one column-backed value on an Entity.
 type Field struct {
-	Name     string
-	Nullable bool
-	Unique   bool
+	Name          string
+	Nullable      bool
+	Unique        bool
+	PrimaryKey    bool
+	AutoIncrement bool
+	SoftDelete    bool
 }
 
 // Reference describes a foreign key on an Entity that points at another
-// entity's primary key. Name is the field on the owning entity that carries
-// the key; Target is the referenced Entity's Name.
+// entity's primary key. Fields are the field names on the owning entity
+// that carry the key, more than one for a composite foreign key, always in
+// the same order as the referenced entity's own key fields. Target is the
+// referenced Entity's Name.
 type Reference struct {
-	Name     string
+	Fields   []string
 	Target   string
 	Nullable bool
 }

@@ -1,6 +1,9 @@
 package autoseed
 
-import "sort"
+import (
+	"sort"
+	"strings"
+)
 
 // graphEdge is one foreign key reference in the dependency graph: from
 // depends on to, meaning a row of from cannot be inserted before a row of
@@ -8,7 +11,7 @@ import "sort"
 type graphEdge struct {
 	from     string
 	to       string
-	field    string
+	fields   []string
 	nullable bool
 }
 
@@ -35,12 +38,12 @@ func NewDependencyGraph(entities []Entity) (*DependencyGraph, error) {
 	for _, entity := range entities {
 		for _, ref := range entity.References {
 			if !known[ref.Target] {
-				return nil, unknownReferenceError(entity.Name, ref.Name, ref.Target)
+				return nil, unknownReferenceError(entity.Name, ref.Fields, ref.Target)
 			}
 			edges = append(edges, graphEdge{
 				from:     entity.Name,
 				to:       ref.Target,
-				field:    ref.Name,
+				fields:   ref.Fields,
 				nullable: ref.Nullable,
 			})
 		}
@@ -63,7 +66,7 @@ type TopologicalSortResult struct {
 // entity in Order has been written.
 type DeferredReference struct {
 	Entity string
-	Field  string
+	Fields []string
 	Target string
 }
 
@@ -166,6 +169,6 @@ func sortEdges(edges []graphEdge) {
 		if edges[i].to != edges[j].to {
 			return edges[i].to < edges[j].to
 		}
-		return edges[i].field < edges[j].field
+		return strings.Join(edges[i].fields, "+") < strings.Join(edges[j].fields, "+")
 	})
 }

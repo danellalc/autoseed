@@ -12,7 +12,7 @@ func TestNewDependencyGraph_UnknownReference(t *testing.T) {
 		{
 			Name: "Order",
 			References: []autoseed.Reference{
-				{Name: "CustomerID", Target: "Customer"},
+				{Fields: []string{"CustomerID"}, Target: "Customer"},
 			},
 		},
 	})
@@ -38,8 +38,8 @@ func TestResolve_Order(t *testing.T) {
 		{
 			name: "linear chain",
 			entities: []autoseed.Entity{
-				{Name: "OrderItem", References: []autoseed.Reference{{Name: "OrderID", Target: "Order"}}},
-				{Name: "Order", References: []autoseed.Reference{{Name: "CustomerID", Target: "Customer"}}},
+				{Name: "OrderItem", References: []autoseed.Reference{{Fields: []string{"OrderID"}, Target: "Order"}}},
+				{Name: "Order", References: []autoseed.Reference{{Fields: []string{"CustomerID"}, Target: "Customer"}}},
 				{Name: "Customer"},
 			},
 			want: []string{"Customer", "Order", "OrderItem"},
@@ -48,11 +48,11 @@ func TestResolve_Order(t *testing.T) {
 			name: "diamond, ties break on name",
 			entities: []autoseed.Entity{
 				{Name: "Root"},
-				{Name: "Left", References: []autoseed.Reference{{Name: "RootID", Target: "Root"}}},
-				{Name: "Right", References: []autoseed.Reference{{Name: "RootID", Target: "Root"}}},
+				{Name: "Left", References: []autoseed.Reference{{Fields: []string{"RootID"}, Target: "Root"}}},
+				{Name: "Right", References: []autoseed.Reference{{Fields: []string{"RootID"}, Target: "Root"}}},
 				{Name: "Bottom", References: []autoseed.Reference{
-					{Name: "LeftID", Target: "Left"},
-					{Name: "RightID", Target: "Right"},
+					{Fields: []string{"LeftID"}, Target: "Left"},
+					{Fields: []string{"RightID"}, Target: "Right"},
 				}},
 			},
 			want: []string{"Root", "Left", "Right", "Bottom"},

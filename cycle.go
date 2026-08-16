@@ -1,6 +1,9 @@
 package autoseed
 
-import "sort"
+import (
+	"sort"
+	"strings"
+)
 
 // resolveCycles removes every cycle from edges. A cycle with at least one
 // nullable edge is broken by deferring all of its nullable edges to a
@@ -42,7 +45,7 @@ func resolveCycles(names []string, edges []graphEdge) (active []graphEdge, defer
 
 			active = removeEdges(active, nullable)
 			for _, edge := range nullable {
-				deferred = append(deferred, DeferredReference{Entity: edge.from, Field: edge.field, Target: edge.to})
+				deferred = append(deferred, DeferredReference{Entity: edge.from, Fields: edge.fields, Target: edge.to})
 			}
 		}
 
@@ -55,23 +58,27 @@ func resolveCycles(names []string, edges []graphEdge) (active []graphEdge, defer
 		if deferred[i].Entity != deferred[j].Entity {
 			return deferred[i].Entity < deferred[j].Entity
 		}
-		return deferred[i].Field < deferred[j].Field
+		return strings.Join(deferred[i].Fields, "+") < strings.Join(deferred[j].Fields, "+")
 	})
 	return active, deferred, nil
 }
 
 func removeEdges(edges, remove []graphEdge) []graphEdge {
-	skip := make(map[graphEdge]bool, len(remove))
+	skip := make(map[string]bool, len(remove))
 	for _, edge := range remove {
-		skip[edge] = true
+		skip[edgeKey(edge)] = true
 	}
 	out := make([]graphEdge, 0, len(edges))
 	for _, edge := range edges {
-		if !skip[edge] {
+		if !skip[edgeKey(edge)] {
 			out = append(out, edge)
 		}
 	}
 	return out
+}
+
+func edgeKey(edge graphEdge) string {
+	return edge.from + ">" + edge.to + ">" + strings.Join(edge.fields, "+")
 }
 
 // stronglyConnectedComponents partitions names into strongly connected

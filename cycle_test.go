@@ -12,7 +12,7 @@ func TestResolve_NullableSelfReference(t *testing.T) {
 		{
 			Name: "Employee",
 			References: []autoseed.Reference{
-				{Name: "ManagerID", Target: "Employee", Nullable: true},
+				{Fields: []string{"ManagerID"}, Target: "Employee", Nullable: true},
 			},
 		},
 	})
@@ -27,7 +27,7 @@ func TestResolve_NullableSelfReference(t *testing.T) {
 	if !equalStrings(result.Order, []string{"Employee"}) {
 		t.Fatalf("Order = %v, want [Employee]", result.Order)
 	}
-	want := []autoseed.DeferredReference{{Entity: "Employee", Field: "ManagerID", Target: "Employee"}}
+	want := []autoseed.DeferredReference{{Entity: "Employee", Fields: []string{"ManagerID"}, Target: "Employee"}}
 	if !equalDeferred(result.Deferred, want) {
 		t.Fatalf("Deferred = %v, want %v", result.Deferred, want)
 	}
@@ -38,7 +38,7 @@ func TestResolve_RequiredSelfReference(t *testing.T) {
 		{
 			Name: "Employee",
 			References: []autoseed.Reference{
-				{Name: "ManagerID", Target: "Employee", Nullable: false},
+				{Fields: []string{"ManagerID"}, Target: "Employee", Nullable: false},
 			},
 		},
 	})
@@ -59,13 +59,13 @@ func TestResolve_NullableCrossEntityCycle(t *testing.T) {
 		{
 			Name: "Order",
 			References: []autoseed.Reference{
-				{Name: "ContactID", Target: "Contact", Nullable: false},
+				{Fields: []string{"ContactID"}, Target: "Contact", Nullable: false},
 			},
 		},
 		{
 			Name: "Contact",
 			References: []autoseed.Reference{
-				{Name: "DefaultOrderID", Target: "Order", Nullable: true},
+				{Fields: []string{"DefaultOrderID"}, Target: "Order", Nullable: true},
 			},
 		},
 	})
@@ -82,7 +82,7 @@ func TestResolve_NullableCrossEntityCycle(t *testing.T) {
 	if !equalStrings(result.Order, []string{"Contact", "Order"}) {
 		t.Fatalf("Order = %v, want [Contact Order]", result.Order)
 	}
-	want := []autoseed.DeferredReference{{Entity: "Contact", Field: "DefaultOrderID", Target: "Order"}}
+	want := []autoseed.DeferredReference{{Entity: "Contact", Fields: []string{"DefaultOrderID"}, Target: "Order"}}
 	if !equalDeferred(result.Deferred, want) {
 		t.Fatalf("Deferred = %v, want %v", result.Deferred, want)
 	}
@@ -93,13 +93,13 @@ func TestResolve_RequiredCrossEntityCycle(t *testing.T) {
 		{
 			Name: "Order",
 			References: []autoseed.Reference{
-				{Name: "ContactID", Target: "Contact", Nullable: false},
+				{Fields: []string{"ContactID"}, Target: "Contact", Nullable: false},
 			},
 		},
 		{
 			Name: "Contact",
 			References: []autoseed.Reference{
-				{Name: "DefaultOrderID", Target: "Order", Nullable: false},
+				{Fields: []string{"DefaultOrderID"}, Target: "Order", Nullable: false},
 			},
 		},
 	})
@@ -113,25 +113,51 @@ func TestResolve_RequiredCrossEntityCycle(t *testing.T) {
 	}
 }
 
+func TestResolve_CompositeForeignKey(t *testing.T) {
+	graph, err := autoseed.NewDependencyGraph([]autoseed.Entity{
+		{
+			Name: "OrderLine",
+			References: []autoseed.Reference{
+				{Fields: []string{"OrderID", "LineNo"}, Target: "Order", Nullable: false},
+			},
+		},
+		{Name: "Order"},
+	})
+	if err != nil {
+		t.Fatalf("NewDependencyGraph: %v", err)
+	}
+
+	result, err := graph.Resolve()
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if !equalStrings(result.Order, []string{"Order", "OrderLine"}) {
+		t.Fatalf("Order = %v, want [Order OrderLine]", result.Order)
+	}
+	if len(result.Deferred) != 0 {
+		t.Fatalf("Deferred = %v, want none", result.Deferred)
+	}
+}
+
 // TestResolve_StableAcrossRuns guards the #1 determinism trap in this
 // codebase: a map iterated somewhere in the resolution path would make this
 // flaky. It is not.
 func TestResolve_StableAcrossRuns(t *testing.T) {
 	entities := []autoseed.Entity{
-		{Name: "Zebra", References: []autoseed.Reference{{Name: "RootID", Target: "Root"}}},
-		{Name: "Mango", References: []autoseed.Reference{{Name: "RootID", Target: "Root"}}},
-		{Name: "Apple", References: []autoseed.Reference{{Name: "RootID", Target: "Root"}}},
+		{Name: "Zebra", References: []autoseed.Reference{{Fields: []string{"RootID"}, Target: "Root"}}},
+		{Name: "Mango", References: []autoseed.Reference{{Fields: []string{"RootID"}, Target: "Root"}}},
+		{Name: "Apple", References: []autoseed.Reference{{Fields: []string{"RootID"}, Target: "Root"}}},
 		{Name: "Root"},
 		{
 			Name: "Loop",
 			References: []autoseed.Reference{
-				{Name: "PeerID", Target: "Peer", Nullable: true},
+				{Fields: []string{"PeerID"}, Target: "Peer", Nullable: true},
 			},
 		},
 		{
 			Name: "Peer",
 			References: []autoseed.Reference{
-				{Name: "LoopID", Target: "Loop", Nullable: true},
+				{Fields: []string{"LoopID"}, Target: "Loop", Nullable: true},
 			},
 		},
 	}
@@ -168,7 +194,7 @@ func equalDeferred(a, b []autoseed.DeferredReference) bool {
 		return false
 	}
 	for i := range a {
-		if a[i] != b[i] {
+		if a[i].Entity != b[i].Entity || a[i].Target != b[i].Target || !equalStrings(a[i].Fields, b[i].Fields) {
 			return false
 		}
 	}

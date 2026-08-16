@@ -15,8 +15,8 @@ var ErrUnknownReference = errors.New("autoseed: reference targets an unknown ent
 // satisfy every required foreign key at once.
 var ErrUnsatisfiableCycle = errors.New("autoseed: unsatisfiable required foreign key cycle")
 
-func unknownReferenceError(entity, field, target string) error {
-	return fmt.Errorf("%w: %s.%s references %q", ErrUnknownReference, entity, field, target)
+func unknownReferenceError(entity string, fields []string, target string) error {
+	return fmt.Errorf("%w: %s.%s references %q", ErrUnknownReference, entity, strings.Join(fields, "+"), target)
 }
 
 func unsatisfiableCycleError(entities []string) error {
