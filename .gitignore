@@ -12,6 +12,10 @@ Thumbs.db
 # Env
 .env
 
+# Example run artifacts
+*.db
+*.exe
+
 /docs
 
 CLAUDE.md
