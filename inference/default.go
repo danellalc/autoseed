@@ -14,6 +14,7 @@ func NewDefaultGenerator() *Generator {
 		PriceRule{},
 		QuantityRule{},
 		CorrelatedTotalRule{},
+		SoftDeleteRule{},
 		genericTextRule{},
 		genericNumberRule{},
 		genericBoolRule{},
