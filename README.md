@@ -116,9 +116,9 @@ GORM first because it is where most Go codebases are. ent second because its sch
 
 ## Validated
 
-A property-based test asserts that for **any** model and **any** mix of nullable/required references, the engine either names an unsatisfiable cycle or produces an order that respects every foreign key; it runs on every commit against the graph and cycle engine directly, no database needed.
+A property-based test asserts that for **any** model and **any** mix of nullable/required references, the engine either names an unsatisfiable cycle or produces an order that respects every foreign key; it runs on every commit against the graph and cycle engine directly, no database needed. A second layer of property tests runs `gormseed.Seed` itself, seed and scale rapid-varied, against a real containerized PostgreSQL and checks every row for orphaned foreign keys — a linear chain, a diamond of two required principals merging into one dependent, and a nullable self-reference.
 
-`gormseed.Seed` itself is tested against real, containerized PostgreSQL and MySQL — never SQLite-only — covering a required-FK chain with long-tail cardinality, a nullable self-reference, a required/nullable two-entity cycle resolved in a second pass, and a many-to-many join table. Against real, public schemas is still ahead of launch.
+`gormseed.Seed` is also tested against real, containerized PostgreSQL and MySQL — never SQLite-only — covering a required-FK chain with long-tail cardinality, a nullable self-reference, a required/nullable two-entity cycle resolved in a second pass, and a many-to-many join table. A combined "MegaMart" model exercises every one of those shapes together in a single seed run — self-reference, embedded struct, composite primary keys, unique columns, soft-delete bias, a many-to-many join and a correlated derived value — the way a real application model mixes them. Against real, public schemas is still ahead of launch.
 
 ## Compared to
 

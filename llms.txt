@@ -45,12 +45,13 @@ struct it has ever used, unlike an EF Core `DbContext`, so the list is stated ex
 call. `Explain`'s `db` may be `nil`, or not yet connected to a real database — reading a model is
 pure reflection; `Seed` needs a real, migrated connection since it writes.
 
-`autoseed/inference` (~15 value-generation rules, gofakeit-backed) is what `Seed` calls per field:
-Email/Name/Phone/URL/Street/City, coherent CreatedAt/UpdatedAt and Price×Quantity=Total, generic
-fallbacks by Go type, and one rule with no opt-in — any string field named `Cpf` or `Cnpj`
-(case-insensitive suffix, any project) generates a Brazilian document number with a valid check
-digit. This is not locale-gated — there is no locale mechanism yet — so a non-Brazilian project
-with a coincidentally matching field name gets Brazilian-format data.
+`autoseed/inference` (~16 value-generation rules, gofakeit-backed) is what `Seed` calls per field:
+Email/Name/Phone/URL/Street/City, coherent CreatedAt/UpdatedAt and Price×Quantity=Total, a
+soft-delete field left nil (not deleted) 90% of the time, generic fallbacks by Go type, and one
+rule with no opt-in — any string field named `Cpf` or `Cnpj` (case-insensitive suffix, any
+project) generates a Brazilian document number with a valid check digit. This is not
+locale-gated — there is no locale mechanism yet — so a non-Brazilian project with a
+coincidentally matching field name gets Brazilian-format data.
 
 ## Planned, not implemented yet
 
@@ -75,9 +76,16 @@ built either; coherence today is same-row only.
   patched in a second pass once every row exists.
 - A duplicate value for a field tagged `unique` (single-column, string only) is rewritten with a
   random numeric suffix, retried up to 20 times, before `ErrUnsatisfiableUniqueness` names it.
+  Composite unique constraints are not enforced.
+- A field GORM recognizes as its soft-delete column (`gorm.DeletedAt`) is left unset (visible) on
+  about 90% of rows and given a past timestamp (deleted) on the rest — a fixed rate, not yet
+  configurable.
 - Embedded structs are written as columns, never as their own table.
 - Unsupported constructs (polymorphic associations, for now) are skipped BY NAME in the Explain
   report, never silently misread or misgenerated.
+- Primary keys are assumed database-generated (auto-increment/serial). A natural or
+  non-auto-increment primary key (e.g. an app-generated UUID) is left at its zero value, not
+  generated — give such entities an auto-increment surrogate key instead.
 
 ## Common mistakes when using this library
 

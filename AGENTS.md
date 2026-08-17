@@ -29,7 +29,7 @@ Seven stages; new code belongs to exactly one:
 3. `CycleResolver` — nullable cycles → two passes; required cycles → `ErrUnsatisfiableCycle` naming entities
 4. `GenerationPlan` — row counts, cardinality, distribution
 5. `ValueGeneration` — semantic inference over gofakeit, seeded
-6. `ConstraintSatisfaction` — uniqueness via pre-shuffled pools, not-null, length
+6. `ConstraintSatisfaction` — uniqueness (generate, dedupe with a numeric suffix, bounded retries), not-null, length
 7. `Persistence` — ordered batched insert, generated IDs read back before children
 
 ## Hard rules
@@ -64,7 +64,7 @@ Seven stages; new code belongs to exactly one:
 - Property-based (pgregory.net/rapid): for any model and any seed, every FK references an existing row.
 - Determinism: same seed twice → byte-identical output; anti-map-iteration test runs repeatedly.
 - New inference rules and distribution shapes ship with tests.
-- The MegaMart torture model (cycles, self-refs, embedded, soft-delete, composite unique, many2many) must stay green.
+- The MegaMart torture model (self-reference, embedded struct, composite primary keys, unique columns, soft-delete, many2many, correlated derived values, all in one seed run) must stay green. Composite unique constraints and non-auto-increment primary keys are out of scope — not modeled.
 
 ## Commits
 
