@@ -30,6 +30,11 @@ var ErrInvalidReference = errors.New("autoseed: reference names no fields")
 // thing or the zero value.
 var ErrUnsupportedField = errors.New("autoseed: no inference rule for field")
 
+// ErrUnsatisfiableUniqueness is returned when a duplicate value for a
+// unique field could not be fixed within the retry budget: the value
+// space is too small for the requested row count.
+var ErrUnsatisfiableUniqueness = errors.New("autoseed: could not generate a unique value")
+
 func unknownReferenceError(entity string, fields []string, target string) error {
 	return fmt.Errorf("%w: %s.%s references %q", ErrUnknownReference, entity, strings.Join(fields, "+"), target)
 }
@@ -44,4 +49,8 @@ func duplicateEntityError(name string) error {
 
 func invalidReferenceError(entity, target string) error {
 	return fmt.Errorf("%w: %s references %q with no fields named", ErrInvalidReference, entity, target)
+}
+
+func unsatisfiableUniquenessError(entity, field string, attempts int) error {
+	return fmt.Errorf("%w: %s.%s after %d attempts", ErrUnsatisfiableUniqueness, entity, field, attempts)
 }
