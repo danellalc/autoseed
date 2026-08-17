@@ -44,6 +44,7 @@ func PlanGeneration(entities []Entity, order []string, deferred []DeferredRefere
 	for _, d := range deferred {
 		deferredEdges[deferredEdgeKey(d.Entity, d.Fields)] = true
 	}
+	requiredTargets := requiredReferenceTargets(entities, deferredEdges)
 
 	rowCounts := make(map[string]int, len(order))
 	plans := make([]EntityGenerationPlan, 0, len(order))
@@ -63,11 +64,35 @@ func PlanGeneration(entities []Entity, order []string, deferred []DeferredRefere
 		for _, count := range childCounts {
 			total += count
 		}
+
+		if total == 0 && requiredTargets[name] && rowCounts[driver] > 0 {
+			childCounts[0] = 1
+			total = 1
+		}
+
 		rowCounts[name] = total
 		plans = append(plans, EntityGenerationPlan{Entity: name, RowCount: total, Driver: driver, ChildCounts: childCounts})
 	}
 
 	return &GenerationPlan{Entities: plans}
+}
+
+// requiredReferenceTargets returns the set of entity names that some other
+// entity's required, non-deferred reference points at — including a
+// non-driver principal, which selectDriver alone would never surface.
+// Those entities cannot be left at zero rows without orphaning whatever
+// depends on them.
+func requiredReferenceTargets(entities []Entity, deferredEdges map[string]bool) map[string]bool {
+	targets := make(map[string]bool)
+	for _, entity := range entities {
+		for _, ref := range entity.References {
+			if ref.Nullable || deferredEdges[deferredEdgeKey(entity.Name, ref.Fields)] {
+				continue
+			}
+			targets[ref.Target] = true
+		}
+	}
+	return targets
 }
 
 func selectDriver(entity Entity, deferredEdges map[string]bool) string {

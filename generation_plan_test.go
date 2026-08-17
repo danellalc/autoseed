@@ -134,6 +134,40 @@ func TestPlanGeneration_OnlyOneSideOfManyToManyDrives(t *testing.T) {
 	}
 }
 
+// TestPlanGeneration_NonDriverRequiredTargetNeverEndsAtZero guards a real
+// bug a property test against gormseed.Seed found: DiamondMerge requires
+// both DiamondLeft (its driver) and DiamondRight (round-robin, not the
+// driver). DiamondRight's own row count comes from an independent
+// long-tail draw off DiamondRoot and can legitimately land on zero — and
+// when it did, DiamondMerge silently left DiamondRightID at its Go zero
+// value, an orphaned foreign key, with no error. seed=2, scale=1 is the
+// exact case that reproduced it before this fix.
+func TestPlanGeneration_NonDriverRequiredTargetNeverEndsAtZero(t *testing.T) {
+	entities := []autoseed.Entity{
+		{Name: "DiamondRoot"},
+		{Name: "DiamondLeft", References: []autoseed.Reference{
+			{Fields: []string{"DiamondRootID"}, Target: "DiamondRoot", Nullable: false},
+		}},
+		{Name: "DiamondRight", References: []autoseed.Reference{
+			{Fields: []string{"DiamondRootID"}, Target: "DiamondRoot", Nullable: false},
+		}},
+		{Name: "DiamondMerge", References: []autoseed.Reference{
+			{Fields: []string{"DiamondLeftID"}, Target: "DiamondLeft", Nullable: false},
+			{Fields: []string{"DiamondRightID"}, Target: "DiamondRight", Nullable: false},
+		}},
+	}
+
+	for seed := uint64(0); seed < 200; seed++ {
+		plan := planFor(t, entities, autoseed.NewOptions(autoseed.WithSeed(seed), autoseed.WithScale(1)))
+		merge := entityPlan(t, plan, "DiamondMerge")
+		right := entityPlan(t, plan, "DiamondRight")
+
+		if merge.RowCount > 0 && right.RowCount == 0 {
+			t.Fatalf("seed %d: DiamondMerge has %d rows but DiamondRight (a required, non-driver target) has 0 — every DiamondRightID would be orphaned", seed, merge.RowCount)
+		}
+	}
+}
+
 func TestPlanGeneration_Deterministic(t *testing.T) {
 	entities := []autoseed.Entity{
 		{Name: "Customer"},
