@@ -148,7 +148,15 @@ func truncateAll(t *testing.T, db *gorm.DB, tables ...string) {
 	}
 }
 
-func assertNoOrphans(rt *rapid.T, db *gorm.DB, childTable, childColumn, parentTable, parentColumn string) {
+// failer is satisfied by both *testing.T and *rapid.T, so the orphan
+// assertions below serve both the plain integration tests and the
+// rapid-driven property tests without duplicating the SQL.
+type failer interface {
+	Helper()
+	Fatalf(format string, args ...any)
+}
+
+func assertNoOrphans(rt failer, db *gorm.DB, childTable, childColumn, parentTable, parentColumn string) {
 	rt.Helper()
 	query := fmt.Sprintf(
 		`SELECT count(*) FROM %s c LEFT JOIN %s p ON c.%s = p.%s WHERE p.%s IS NULL`,
@@ -163,7 +171,7 @@ func assertNoOrphans(rt *rapid.T, db *gorm.DB, childTable, childColumn, parentTa
 	}
 }
 
-func assertNoOrphansNullable(rt *rapid.T, db *gorm.DB, childTable, childColumn, parentTable, parentColumn string) {
+func assertNoOrphansNullable(rt failer, db *gorm.DB, childTable, childColumn, parentTable, parentColumn string) {
 	rt.Helper()
 	query := fmt.Sprintf(
 		`SELECT count(*) FROM %s c LEFT JOIN %s p ON c.%s = p.%s WHERE c.%s IS NOT NULL AND p.%s IS NULL`,
