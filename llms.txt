@@ -1,21 +1,22 @@
 # autoseed (Go)
 
 > Reads a GORM model via schema.Parse, derives foreign-key insertion order (stable topological
-> sort), and resolves nullable cycles in two passes, so nothing about entities, ordering or
-> relationships needs declaring by hand. Status: in development. Today the library reads a model
-> and reports the plan (gormseed.Explain); it does not yet generate or write data.
+> sort), resolves cycles (a nullable edge in two passes, a required-only cycle by naming it), and
+> writes referentially valid rows through gormseed.Seed — real inserts, tested against real
+> PostgreSQL and MySQL. Status: in development; gormseed.SeedCoverage and locale/null-rate options
+> are still design, not code. Read "Implemented today" vs "Planned" below before generating code.
 
-Unlike every other Go seeder, nothing will be declared by hand once value generation ships — no
-YAML fixtures, no hand-written Seed() loops, no files numbered 01_, 02_ to get foreign-key order
-right. The model is the specification.
+Unlike every other Go seeder, nothing is declared by hand — no YAML fixtures, no hand-written
+Seed() loops, no files numbered 01_, 02_ to get foreign-key order right. The model is the
+specification.
 
 Sibling project: EFCore.AutoSeed (same author, same design, .NET).
 
 - Module: `github.com/danellalc/autoseed`
 - Adapters: `autoseed/gormseed` (GORM, implemented), `autoseed/entseed` (ent, planned)
-- Databases (once Seed exists): PostgreSQL, MySQL, SQLite
+- Databases: PostgreSQL, MySQL tested against real containers; SQLite a supported target, untested
 - License: MIT
-- Status: in development — read "Implemented today" vs "Planned" below before generating code
+- Status: in development
 
 ## Install
 
@@ -30,64 +31,70 @@ import "github.com/danellalc/autoseed/gormseed"
 
 models := []any{&Customer{}, &Order{}, &OrderItem{}}
 
-// Reads the model, derives insertion order, resolves nullable cycles. Writes nothing.
+// Writes referentially valid rows, in dependency order. 1,000 Customer rows;
+// Order and OrderItem scale from a long-tail draw per parent row.
+err := gormseed.Seed(ctx, db, models, autoseed.WithSeed(42), autoseed.WithScale(1_000))
+
+// Reads the model, derives insertion order, resolves cycles. Writes nothing.
 plan, err := gormseed.Explain(db, models)
 fmt.Println(plan.Report())
 ```
 
-`db` may be `nil`, or not yet connected to a real database — reading a model is pure reflection,
-no connection needed. `models` is the exhaustive set of GORM structs to include: a `*gorm.DB`
-keeps no registry of every struct it has ever used, unlike an EF Core `DbContext`, so the list is
-stated explicitly on every call.
+`models` is the exhaustive set of GORM structs to include: a `*gorm.DB` keeps no registry of every
+struct it has ever used, unlike an EF Core `DbContext`, so the list is stated explicitly on every
+call. `Explain`'s `db` may be `nil`, or not yet connected to a real database — reading a model is
+pure reflection; `Seed` needs a real, migrated connection since it writes.
 
-The `autoseed/inference` package (~15 value-generation rules, gofakeit-backed) is built and
-tested but not yet wired to any public `gormseed` function — nothing calls it from `Explain` or
-from a `Seed` that doesn't exist yet. One rule runs unconditionally, with no opt-in: any string
-field named `Cpf` or `Cnpj` (case-insensitive suffix, any project) generates a Brazilian document
-number with a valid check digit. This is not locale-gated — there is no locale mechanism yet — so
-a non-Brazilian project with a coincidentally matching field name gets Brazilian-format data.
+`autoseed/inference` (~15 value-generation rules, gofakeit-backed) is what `Seed` calls per field:
+Email/Name/Phone/URL/Street/City, coherent CreatedAt/UpdatedAt and Price×Quantity=Total, generic
+fallbacks by Go type, and one rule with no opt-in — any string field named `Cpf` or `Cnpj`
+(case-insensitive suffix, any project) generates a Brazilian document number with a valid check
+digit. This is not locale-gated — there is no locale mechanism yet — so a non-Brazilian project
+with a coincidentally matching field name gets Brazilian-format data.
 
 ## Planned, not implemented yet
 
 These identifiers do not exist in the module. Do not generate calls to them.
 
 ```go
-err := gormseed.Seed(db, models, autoseed.WithSeed(42), autoseed.WithScale(1_000))
 err := gormseed.SeedCoverage(db, models)
 ```
 
-Planned functional options, none implemented yet: `WithSeed(uint64)`, `WithScale(int)`,
-`WithLocale("pt_BR")`, `WithNilRate(0.2)`.
+Planned functional options, none implemented yet: `WithLocale("pt_BR")`, `WithNilRate(0.2)`. Every
+field, nullable or not, currently always gets a concrete non-nil value — no per-column null rate
+yet. Coherence across DIFFERENT entities (a child row's CreatedAt at or after its parent's) is not
+built either; coherence today is same-row only.
 
-## Guarantees (today's scope: reading and Explain)
+## Guarantees
 
-- Every Reference in a resolved Plan targets an entity present in `models`, or Explain returns
-  `autoseed.ErrUnknownReference` naming what is missing.
-- Same model, same Explain output, across runs and machines — map iteration never affects it.
-- Embedded structs are read as columns, never as their own entity.
-- An unsatisfiable model (a required foreign key cycle) returns `autoseed.ErrUnsatisfiableCycle`
-  naming the real cycle, rather than a database throwing a constraint violation later.
+- Every foreign key `Seed` writes references a row that was actually inserted — verified against
+  real PostgreSQL and MySQL, not asserted from reasoning alone.
+- Same seed, same data, across runs and machines. Map iteration never affects output.
+- A required foreign key cycle returns `autoseed.ErrUnsatisfiableCycle` naming the real cycle,
+  rather than a database throwing a constraint violation. A nullable one is inserted null, then
+  patched in a second pass once every row exists.
+- A duplicate value for a field tagged `unique` (single-column, string only) is rewritten with a
+  random numeric suffix, retried up to 20 times, before `ErrUnsatisfiableUniqueness` names it.
+- Embedded structs are written as columns, never as their own table.
 - Unsupported constructs (polymorphic associations, for now) are skipped BY NAME in the Explain
-  report, never silently misread.
-
-Guarantees about generated data — every foreign key pointing at a real row, soft-deleted rows in
-realistic proportion, deterministic generated values for a given seed — describe the design and
-apply once `Seed` ships. They are not true of any code path today.
+  report, never silently misread or misgenerated.
 
 ## Common mistakes when using this library
 
-- Do not generate a call to `gormseed.Seed` or `gormseed.SeedCoverage` — neither exists yet.
-  `gormseed.Explain` is the one thing that runs today.
-- Do not omit a related model from `models` — `Explain` returns `ErrUnknownReference` naming
-  what's missing, rather than a partial or guessed plan.
+- Do not generate a call to `gormseed.SeedCoverage` — it does not exist yet. Use `gormseed.Seed`
+  with a small `WithScale` for a small dataset instead.
+- Do not omit a related model from `models` — `Seed`/`Explain` return `ErrUnknownReference` naming
+  what's missing, rather than a partial or guessed result.
 - Do not order entities manually. Order is derived from the model's foreign keys.
+- Do not pass a nil or unmigrated `db` to `Seed` — unlike `Explain`, it writes, and needs the
+  tables to already exist.
 - Polymorphic associations are read but not generated; they appear as skipped in the Explain
   report, never as a reference.
 
 ## Not supported
 
 - ORMs other than GORM (ent is planned; others on demand with traction).
-- Databases other than PostgreSQL, MySQL, SQLite, once `Seed` exists.
+- Databases other than PostgreSQL, MySQL, SQLite.
 - Production data anonymisation. No cloud, no service.
 
 ## Documentation

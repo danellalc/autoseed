@@ -62,7 +62,7 @@ EF Core has one `IModel` with everything stated. GORM infers from struct tags, f
 
 ### Uniqueness without O(n²)
 
-Pre-shuffled pools with uniqueness by construction; bounded retry; deterministic suffix as last resort. Ported design, not rediscovered.
+Not a pre-shuffled pool — checked the actual `.NET` source (`UniquenessEnforcer.cs`) rather than trust its own README, and no such pool exists there either, only in the prose. The real, shipped algorithm, ported as-is: generate every row first, then for each single-column string field marked unique, scan in row order with a `map[string]bool` of values seen; the first row to use a value keeps it, a duplicate gets a random numeric suffix, retried up to 20 times before giving up named. Composite unique constraints and non-string columns are out of scope, same as the original.
 
 ### Determinism in Go
 
@@ -75,7 +75,9 @@ Same seed, same data, always — the central guarantee.
 
 ### database/sql and batching
 
-`CreateInBatches` for GORM path. Respect `autoIncrement` — read back generated IDs before children generate FKs. For PostgreSQL, `RETURNING` covers it; MySQL needs `LastInsertId` arithmetic on batches — sharp edge, tested against real databases, not SQLite-only.
+`CreateInBatches` for GORM path, one entity type at a time in dependency order: generate its rows, insert, and only then move to the next entity type, so a child's foreign keys are assigned from the parent's real, already-inserted primary key — never a value invented independently of what actually got written. For PostgreSQL, `RETURNING` covers the read-back; MySQL needs `LastInsertId` arithmetic on batches — verified against a real container, not SQLite-only.
+
+**A table with no column besides its primary key cannot be trusted with a multi-row batch.** Confirmed against real PostgreSQL, independent of this package: `INSERT INTO t DEFAULT VALUES` (what GORM emits when there is nothing else to insert) has no multi-row form, so a `CreateInBatches` call over N such rows reports back the first row's generated id and silently leaves the rest at their zero value — no error, just wrong foreign keys downstream. A many2many join table with no extra column, or the simplest possible lookup entity, hits this. The fix is a batch size of 1 whenever an entity has no field besides its primary key; everything else keeps the real batch size.
 
 ### The InMemory lesson, Go edition
 
@@ -102,7 +104,7 @@ gofakeit has no locale support at all (v7.15.0, checked directly against its sou
 ## Roadmap
 
 **v1 — GORM core**
-Model reading via `schema.Parse`, stable topological sort, nullable-cycle resolution, ~15 inference rules with coherence (FirstName+LastName+Email agree; UpdatedAt ≥ CreatedAt; Total = Price × Quantity), basic long tail, deterministic seed, PostgreSQL + MySQL + SQLite, `Seed`, `Explain`, `SeedCoverage`.
+Model reading via `schema.Parse`, stable topological sort, nullable-cycle resolution, ~15 inference rules with coherence (FirstName+LastName+Email agree; UpdatedAt ≥ CreatedAt; Total = Price × Quantity), basic long tail, deterministic seed, `Seed` and `Explain` — shipped, tested against real PostgreSQL and MySQL. `SeedCoverage` still open; SQLite is a supported target but untested.
 
 **v2 — depth**
 ent adapter (proves the contract). Polymorphic generation. Temporal clustering, null rates, dirty-data mode. `autoseed explain` CLI. Benchmarks.

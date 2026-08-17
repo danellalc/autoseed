@@ -10,9 +10,9 @@ From the author of [EFCore.AutoSeed](https://github.com/danellalc/EFCore.AutoSee
 
 In development. This README describes the full design being built — see the [roadmap](ARCHITECTURE.md#roadmap) for what ships when.
 
-**Works today:** reading a GORM model (associations, embedded structs, soft-delete, polymorphic, composite keys), deriving insertion order, resolving nullable cycles, and `gormseed.Explain` — printing that plan without writing anything.
+**Works today:** reading a GORM model, `gormseed.Explain`, and `gormseed.Seed` — real inserts, in dependency order, with long-tail cardinality, unique-field dedup, and deferred second-pass cycles, tested against real PostgreSQL and MySQL.
 
-**Not built yet:** value generation, `gormseed.Seed`, `gormseed.SeedCoverage`, and every `autoseed.With*` option. Code blocks below that use them are the design, marked as such inline — copy `gormseed.Explain` instead if you want something that runs right now.
+**Not built yet:** `gormseed.SeedCoverage`, `WithLocale`, `WithNilRate`, and every value-realism knob beyond the ~15 built-in inference rules (dirty data, weekday/business-hour clustering, per-column null rate). Code blocks below that use them are the design, marked as such inline.
 
 ## The problem
 
@@ -27,15 +27,13 @@ And the data you end up with is uniform: every customer with three orders. In pr
 ```go
 import "github.com/danellalc/autoseed/gormseed"
 
-// The design target — not implemented yet, see Status above.
-// gormseed.Explain works today: see "It explains itself" below.
-err := gormseed.Seed(db, []any{&Customer{}, &Order{}, &OrderItem{}},
+err := gormseed.Seed(ctx, db, []any{&Customer{}, &Order{}, &OrderItem{}},
     autoseed.WithSeed(42),
     autoseed.WithScale(1_000),
 )
 ```
 
-That is meant to be the whole API for the common case. GORM keeps no registry of every struct you have used — unlike an EF Core `DbContext`, a `*gorm.DB` cannot tell you what it knows — so the model list is the one thing you state; autoseed works out the insertion order, resolves cycles, infers what each field means, and writes referentially valid rows.
+That is the whole API for the common case, and it runs today. GORM keeps no registry of every struct you have used — unlike an EF Core `DbContext`, a `*gorm.DB` cannot tell you what it knows — so the model list is the one thing you state; autoseed works out the insertion order, resolves cycles, infers what each field means, and writes referentially valid rows, one entity type at a time, foreign keys copied from the real, already-inserted parent row.
 
 Same seed, same data. Always.
 
@@ -63,7 +61,7 @@ When a cycle is genuinely unsatisfiable — a required foreign key with no nulla
 
 ### It generates realistic distributions, not just realistic values
 
-Built on gofakeit for values (it does not replace it), autoseed adds the shape:
+Built on gofakeit for values (it does not replace it), autoseed adds the shape. Related row counts are drawn per parent from an exponential long tail, not a flat average:
 
 ```
 Customer:   1,000 rows
@@ -71,7 +69,7 @@ Order:      3,847 rows   long tail: mean 3.8, max 512, one customer holds 13%
 OrderItem: 19,203 rows
 ```
 
-Most customers have one order. A few have hundreds. Timestamps cluster on weekdays and business hours. Optional fields are actually nil sometimes.
+Most customers have one order. A few have hundreds — sometimes zero. Coherent values agree with each other on the same row (`FirstName`+`LastName`+`Email`, `Price`×`Quantity`=`Total`, `UpdatedAt` at or after `CreatedAt`). Weekday/business-hour clustering and dirty data are not built yet — see the [roadmap](ARCHITECTURE.md#roadmap).
 
 ### It explains itself before it writes anything
 
@@ -89,7 +87,8 @@ Prints the insertion order, which cycles got deferred to a second pass, and whic
 The opposite of bulk. The *smallest* dataset that exercises everything:
 
 ```go
-// Design target — not implemented yet, see Status above.
+// Design target — not implemented yet, see Status above. Use gormseed.Seed
+// with a small WithScale for something that runs today.
 err := gormseed.SeedCoverage(db, []any{&Customer{}, &Order{}, &OrderItem{}})
 ```
 
@@ -117,7 +116,9 @@ GORM first because it is where most Go codebases are. ent second because its sch
 
 ## Validated
 
-A property-based test asserts that for **any** model and **any** mix of nullable/required references, the engine either names an unsatisfiable cycle or produces an order that respects every foreign key; it runs on every commit. It exercises the graph and cycle engine directly today — the plan is to run it against real databases via testcontainers-go once `Seed` writes anything, and against real, public schemas by launch.
+A property-based test asserts that for **any** model and **any** mix of nullable/required references, the engine either names an unsatisfiable cycle or produces an order that respects every foreign key; it runs on every commit against the graph and cycle engine directly, no database needed.
+
+`gormseed.Seed` itself is tested against real, containerized PostgreSQL and MySQL — never SQLite-only — covering a required-FK chain with long-tail cardinality, a nullable self-reference, a required/nullable two-entity cycle resolved in a second pass, and a many-to-many join table. Against real, public schemas is still ahead of launch.
 
 ## Compared to
 
