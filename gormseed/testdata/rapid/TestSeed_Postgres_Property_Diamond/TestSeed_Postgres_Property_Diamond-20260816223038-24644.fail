@@ -1,0 +1,10 @@
+# 2026/08/16 22:30:38.108757 [TestSeed_Postgres_Property_Diamond] [rapid] draw seed: 0x2
+# 2026/08/16 22:30:38.108757 [TestSeed_Postgres_Property_Diamond] [rapid] draw scale: 1
+# 2026/08/16 22:30:38.119864 [TestSeed_Postgres_Property_Diamond] 4 rows in diamond_merges reference a non-existent diamond_rights via diamond_right_id
+# 
+v0.4.8#13785046595040043283
+0x1e1e1e1e1e1e2
+0x2
+0x0
+0x0
+0x0
