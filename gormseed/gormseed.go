@@ -25,7 +25,7 @@ func (s source) Entities() ([]autoseed.Entity, error) {
 // db may be nil, or not yet connected to a database: reading the model
 // only inspects the Go struct types.
 func Explain(db *gorm.DB, models []any) (*autoseed.Plan, error) {
-	entities, skipped, err := read(db, models)
+	entities, _, skipped, err := read(db, models)
 	if err != nil {
 		return nil, err
 	}

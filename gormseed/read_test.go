@@ -150,7 +150,7 @@ func referenceTo(t *testing.T, entity autoseed.Entity, target string) autoseed.R
 }
 
 func TestRead_BelongsTo(t *testing.T) {
-	entities, _, err := read(nil, []any{&Post{}, &Author{}})
+	entities, _, _, err := read(nil, []any{&Post{}, &Author{}})
 	if err != nil {
 		t.Fatalf("read: %v", err)
 	}
@@ -170,7 +170,7 @@ func TestRead_BelongsTo(t *testing.T) {
 // field pointing back to Cart. CartItem's own schema has no BelongsTo
 // entry for it at all — the reference has to be inferred from Cart's side.
 func TestRead_OneDirectionalHasMany(t *testing.T) {
-	entities, _, err := read(nil, []any{&Cart{}, &CartItem{}})
+	entities, _, _, err := read(nil, []any{&Cart{}, &CartItem{}})
 	if err != nil {
 		t.Fatalf("read: %v", err)
 	}
@@ -189,7 +189,7 @@ func TestRead_OneDirectionalHasMany(t *testing.T) {
 // Post.Author (BelongsTo) both describing the same AuthorID -> Author
 // relationship: it must appear exactly once on Post.
 func TestRead_BidirectionalDoesNotDuplicate(t *testing.T) {
-	entities, _, err := read(nil, []any{&Post{}, &Author{}})
+	entities, _, _, err := read(nil, []any{&Post{}, &Author{}})
 	if err != nil {
 		t.Fatalf("read: %v", err)
 	}
@@ -207,7 +207,7 @@ func TestRead_BidirectionalDoesNotDuplicate(t *testing.T) {
 }
 
 func TestRead_ManyToMany(t *testing.T) {
-	entities, _, err := read(nil, []any{&Post{}, &Author{}, &Tag{}})
+	entities, _, _, err := read(nil, []any{&Post{}, &Author{}, &Tag{}})
 	if err != nil {
 		t.Fatalf("read: %v", err)
 	}
@@ -245,7 +245,7 @@ func TestRead_ManyToMany(t *testing.T) {
 }
 
 func TestRead_PolymorphicSkippedNamed(t *testing.T) {
-	entities, skipped, err := read(nil, []any{&Video{}, &Comment{}})
+	entities, _, skipped, err := read(nil, []any{&Video{}, &Comment{}})
 	if err != nil {
 		t.Fatalf("read: %v", err)
 	}
@@ -269,7 +269,7 @@ func TestRead_PolymorphicSkippedNamed(t *testing.T) {
 }
 
 func TestRead_EmbeddedStructIsColumnsNotEntity(t *testing.T) {
-	entities, _, err := read(nil, []any{&Post{}, &Author{}})
+	entities, _, _, err := read(nil, []any{&Post{}, &Author{}})
 	if err != nil {
 		t.Fatalf("read: %v", err)
 	}
@@ -286,7 +286,7 @@ func TestRead_EmbeddedStructIsColumnsNotEntity(t *testing.T) {
 }
 
 func TestRead_SoftDelete(t *testing.T) {
-	entities, _, err := read(nil, []any{&Post{}, &Author{}})
+	entities, _, _, err := read(nil, []any{&Post{}, &Author{}})
 	if err != nil {
 		t.Fatalf("read: %v", err)
 	}
@@ -305,7 +305,7 @@ func TestRead_SoftDelete(t *testing.T) {
 }
 
 func TestRead_AutoIncrementPrimaryKey(t *testing.T) {
-	entities, _, err := read(nil, []any{&Post{}, &Author{}})
+	entities, _, _, err := read(nil, []any{&Post{}, &Author{}})
 	if err != nil {
 		t.Fatalf("read: %v", err)
 	}
@@ -317,7 +317,7 @@ func TestRead_AutoIncrementPrimaryKey(t *testing.T) {
 }
 
 func TestRead_CompositePrimaryAndForeignKey(t *testing.T) {
-	entities, _, err := read(nil, []any{&OrderLine{}, &Order{}, &Shipment{}})
+	entities, _, _, err := read(nil, []any{&OrderLine{}, &Order{}, &Shipment{}})
 	if err != nil {
 		t.Fatalf("read: %v", err)
 	}
@@ -343,7 +343,7 @@ func TestRead_CompositePrimaryAndForeignKey(t *testing.T) {
 // must come out as [FB, FA] to line up positionally with TargetBA's own
 // Fields order.
 func TestRead_CompositeReferenceOrderMatchesTargetDeclaration(t *testing.T) {
-	entities, _, err := read(nil, []any{&ChildAB{}, &TargetBA{}})
+	entities, _, _, err := read(nil, []any{&ChildAB{}, &TargetBA{}})
 	if err != nil {
 		t.Fatalf("read: %v", err)
 	}
@@ -361,7 +361,7 @@ func TestRead_CompositeReferenceOrderMatchesTargetDeclaration(t *testing.T) {
 }
 
 func TestRead_OneDirectionalHasOne(t *testing.T) {
-	entities, _, err := read(nil, []any{&User{}, &Profile{}})
+	entities, _, _, err := read(nil, []any{&User{}, &Profile{}})
 	if err != nil {
 		t.Fatalf("read: %v", err)
 	}
@@ -379,7 +379,7 @@ func TestRead_SoftDeleteNotGuessedFromFieldName(t *testing.T) {
 		DeletedAt time.Time
 	}
 
-	entities, _, err := read(nil, []any{&PlainTimestamp{}})
+	entities, _, _, err := read(nil, []any{&PlainTimestamp{}})
 	if err != nil {
 		t.Fatalf("read: %v", err)
 	}
@@ -396,7 +396,7 @@ func TestRead_FieldUnique(t *testing.T) {
 		Email string `gorm:"unique"`
 	}
 
-	entities, _, err := read(nil, []any{&UniqueEmail{}})
+	entities, _, _, err := read(nil, []any{&UniqueEmail{}})
 	if err != nil {
 		t.Fatalf("read: %v", err)
 	}
@@ -445,7 +445,7 @@ func TestRead_ManyToManyWithExplicitJoinStruct(t *testing.T) {
 		t.Fatalf("SetupJoinTable: %v", err)
 	}
 
-	entities, _, err := read(db, []any{&Person{}, &Skill{}})
+	entities, _, _, err := read(db, []any{&Person{}, &Skill{}})
 	if err != nil {
 		t.Fatalf("read: %v", err)
 	}
@@ -466,7 +466,7 @@ func fieldNames(fields []autoseed.Field) []string {
 }
 
 func TestRead_DuplicateModelInListIsIdempotent(t *testing.T) {
-	entities, _, err := read(nil, []any{&Order{}, &Order{}})
+	entities, _, _, err := read(nil, []any{&Order{}, &Order{}})
 	if err != nil {
 		t.Fatalf("read: %v", err)
 	}
@@ -476,7 +476,7 @@ func TestRead_DuplicateModelInListIsIdempotent(t *testing.T) {
 }
 
 func TestRead_PropagatesParseError(t *testing.T) {
-	_, _, err := read(nil, []any{42})
+	_, _, _, err := read(nil, []any{42})
 	if err == nil {
 		t.Fatal("read(42) succeeded, want an error for a non-struct model")
 	}
@@ -485,13 +485,13 @@ func TestRead_PropagatesParseError(t *testing.T) {
 func TestRead_Deterministic(t *testing.T) {
 	models := []any{&Post{}, &Author{}, &Tag{}, &Video{}, &Comment{}, &Cart{}, &CartItem{}, &OrderLine{}, &Order{}, &Shipment{}}
 
-	first, firstSkipped, err := read(nil, models)
+	first, _, firstSkipped, err := read(nil, models)
 	if err != nil {
 		t.Fatalf("read: %v", err)
 	}
 
 	for i := 0; i < 50; i++ {
-		entities, skipped, err := read(nil, models)
+		entities, _, skipped, err := read(nil, models)
 		if err != nil {
 			t.Fatalf("read (run %d): %v", i, err)
 		}

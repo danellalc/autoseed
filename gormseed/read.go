@@ -17,10 +17,10 @@ type inferredReference struct {
 	target string
 }
 
-func read(db *gorm.DB, models []any) ([]autoseed.Entity, []autoseed.SkipReason, error) {
+func read(db *gorm.DB, models []any) ([]autoseed.Entity, map[string]*schema.Schema, []autoseed.SkipReason, error) {
 	schemas, order, err := parseAll(db, models)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	inferredByChild := make(map[string][]inferredReference, len(order))
@@ -48,7 +48,7 @@ func read(db *gorm.DB, models []any) ([]autoseed.Entity, []autoseed.SkipReason, 
 
 			fields, err := foreignKeyFields(r, r.Schema)
 			if err != nil {
-				return nil, nil, err
+				return nil, nil, nil, err
 			}
 			inferredByChild[r.FieldSchema.Name] = append(inferredByChild[r.FieldSchema.Name], inferredReference{
 				fields: fields,
@@ -65,9 +65,10 @@ func read(db *gorm.DB, models []any) ([]autoseed.Entity, []autoseed.SkipReason, 
 			}
 			entity, err := manyToManyJoinEntity(r)
 			if err != nil {
-				return nil, nil, err
+				return nil, nil, nil, err
 			}
 			joinTables[entity.Name] = entity
+			schemas[entity.Name] = r.JoinTable
 		}
 	}
 
@@ -75,7 +76,7 @@ func read(db *gorm.DB, models []any) ([]autoseed.Entity, []autoseed.SkipReason, 
 	for _, name := range order {
 		entity, err := buildEntity(schemas[name], inferredByChild[name])
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 		entities = append(entities, entity)
 	}
@@ -96,7 +97,7 @@ func read(db *gorm.DB, models []any) ([]autoseed.Entity, []autoseed.SkipReason, 
 		return skipped[i].Field < skipped[j].Field
 	})
 
-	return entities, skipped, nil
+	return entities, schemas, skipped, nil
 }
 
 func parseAll(db *gorm.DB, models []any) (map[string]*schema.Schema, []string, error) {
