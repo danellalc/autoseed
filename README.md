@@ -35,6 +35,8 @@ err := gormseed.Seed(ctx, db, []any{&Customer{}, &Order{}, &OrderItem{}},
 
 That is the whole API for the common case, and it runs today. GORM keeps no registry of every struct you have used — unlike an EF Core `DbContext`, a `*gorm.DB` cannot tell you what it knows — so the model list is the one thing you state; autoseed works out the insertion order, resolves cycles, infers what each field means, and writes referentially valid rows, one entity type at a time, foreign keys copied from the real, already-inserted parent row.
 
+A full, runnable version of this example — real SQLite database, `Explain` and `Seed` both — lives in [`examples/gormseed-basic`](examples/gormseed-basic); `go run .` there does the whole thing with no setup.
+
 Same seed, same data. Always.
 
 ```bash
