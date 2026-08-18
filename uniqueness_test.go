@@ -4,6 +4,7 @@ import (
 	"errors"
 	"reflect"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/danellalc/autoseed"
 )
@@ -90,6 +91,42 @@ func TestEnsureUnique_NonStringUniqueFieldUntouched(t *testing.T) {
 	}
 	if rows[0]["Code"] != 1 || rows[1]["Code"] != 1 {
 		t.Fatalf("non-string unique field is out of scope, must not be rewritten, got %v", rows)
+	}
+}
+
+func TestEnsureUnique_NilSeedReturnsError(t *testing.T) {
+	entity := autoseed.Entity{Name: "User", Fields: []autoseed.Field{stringField("Email", true, 0)}}
+	rows := []map[string]any{{"Email": "a@example.com"}, {"Email": "a@example.com"}}
+
+	err := autoseed.EnsureUnique(entity, rows, nil)
+	if !errors.Is(err, autoseed.ErrNilSeed) {
+		t.Fatalf("got %v, want ErrNilSeed", err)
+	}
+}
+
+// TestEnsureUnique_RewrittenValueIsValidUTF8WithinRuneSize guards a real
+// bug: the rewritten value's prefix used to be cut with a byte index
+// (value[:n]), not a rune index. Field.Size models a SQL VARCHAR(n)
+// character limit, so a cut landing inside a multi-byte rune produced a
+// value that was both over the character limit by the database's own
+// counting and not even valid UTF-8. Runs across many seeds so the
+// random suffix length varies the exact cut point relative to the
+// multi-byte character in "café".
+func TestEnsureUnique_RewrittenValueIsValidUTF8WithinRuneSize(t *testing.T) {
+	entity := autoseed.Entity{Name: "User", Fields: []autoseed.Field{stringField("Name", true, 5)}}
+
+	for seed := uint64(0); seed < 200; seed++ {
+		rows := []map[string]any{{"Name": "café"}, {"Name": "café"}}
+		if err := autoseed.EnsureUnique(entity, rows, autoseed.NewSeededSource(seed)); err != nil {
+			t.Fatalf("seed %d: EnsureUnique: %v", seed, err)
+		}
+		got := rows[1]["Name"].(string)
+		if !utf8.ValidString(got) {
+			t.Fatalf("seed %d: rewritten value %q is not valid UTF-8", seed, got)
+		}
+		if runes := len([]rune(got)); runes > 5 {
+			t.Fatalf("seed %d: rewritten value %q has %d runes, want at most 5", seed, got, runes)
+		}
 	}
 }
 

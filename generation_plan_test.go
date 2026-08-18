@@ -1,6 +1,7 @@
 package autoseed_test
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/danellalc/autoseed"
@@ -16,7 +17,11 @@ func planFor(t *testing.T, entities []autoseed.Entity, options autoseed.Options)
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}
-	return autoseed.PlanGeneration(entities, result.Order, result.Deferred, autoseed.NewSeededSource(options.Seed), options)
+	plan, err := autoseed.PlanGeneration(entities, result.Order, result.Deferred, autoseed.NewSeededSource(options.Seed), options)
+	if err != nil {
+		t.Fatalf("PlanGeneration: %v", err)
+	}
+	return plan
 }
 
 func entityPlan(t *testing.T, plan *autoseed.GenerationPlan, name string) autoseed.EntityGenerationPlan {
@@ -269,6 +274,121 @@ func TestPlanGeneration_SharedPrimaryKeyCapsAtOnePerDriverRow(t *testing.T) {
 			}
 		}
 	}
+}
+
+func TestPlanGeneration_NegativeScaleReturnsError(t *testing.T) {
+	_, err := autoseed.PlanGeneration(
+		[]autoseed.Entity{{Name: "Customer"}},
+		[]string{"Customer"},
+		nil,
+		autoseed.NewSeededSource(1),
+		autoseed.NewOptions(autoseed.WithScale(-1)),
+	)
+	if !errors.Is(err, autoseed.ErrInvalidScale) {
+		t.Fatalf("got %v, want ErrInvalidScale", err)
+	}
+}
+
+func TestPlanGeneration_NilSeedReturnsError(t *testing.T) {
+	_, err := autoseed.PlanGeneration(
+		[]autoseed.Entity{{Name: "Customer"}},
+		[]string{"Customer"},
+		nil,
+		nil,
+		autoseed.NewOptions(),
+	)
+	if !errors.Is(err, autoseed.ErrNilSeed) {
+		t.Fatalf("got %v, want ErrNilSeed", err)
+	}
+}
+
+// TestPlanGeneration_SelfReferencingJunctionCapsAndDisambiguates guards a
+// real bug: a self-referencing many-to-many join (both foreign keys
+// targeting the same entity, e.g. a "Person follows Person" friendship
+// table) has two required references with an identical Target, so
+// matching by Target alone could never tell them apart. junctionCap must
+// still recognize the pair by their distinct Fields and cap accordingly.
+func TestPlanGeneration_SelfReferencingJunctionCapsAndDisambiguates(t *testing.T) {
+	entities := []autoseed.Entity{
+		{Name: "Person"},
+		{
+			Name: "PersonFollow",
+			Fields: []autoseed.Field{
+				{Name: "FollowerID", PrimaryKey: true},
+				{Name: "FollowingID", PrimaryKey: true},
+			},
+			References: []autoseed.Reference{
+				{Fields: []string{"FollowerID"}, Target: "Person", Nullable: false},
+				{Fields: []string{"FollowingID"}, Target: "Person", Nullable: false},
+			},
+		},
+	}
+
+	for seed := uint64(0); seed < 200; seed++ {
+		plan := planFor(t, entities, autoseed.NewOptions(autoseed.WithSeed(seed), autoseed.WithScale(3)))
+		follow := entityPlan(t, plan, "PersonFollow")
+		person := entityPlan(t, plan, "Person")
+
+		driverKey := joinFields(follow.DriverFields)
+		junctionKey := joinFields(follow.JunctionFields)
+		if driverKey == "" || junctionKey == "" {
+			t.Fatalf("seed %d: Driver/Junction fields not both set: driver=%v junction=%v", seed, follow.DriverFields, follow.JunctionFields)
+		}
+		if driverKey == junctionKey {
+			t.Fatalf("seed %d: DriverFields and JunctionFields are identical (%v) — the two references were not disambiguated, both would copy the same parent row", seed, follow.DriverFields)
+		}
+		maxValidPartners := person.RowCount - 1 // a row can never pair with itself
+		for i, count := range follow.ChildCounts {
+			if count > maxValidPartners {
+				t.Fatalf("seed %d: Person row %d wants %d PersonFollow children, more than the %d other Person rows available to pair with (excluding itself)", seed, i, count, maxValidPartners)
+			}
+		}
+	}
+}
+
+// TestPlanGeneration_JunctionCapAppliesDespiteExtraRequiredReference
+// guards a real bug: junctionCap used to bail on any entity with more
+// than two required references, even when exactly two of them still
+// exactly cover the primary key and the third is unrelated to it. Adding
+// an ordinary required foreign key to an otherwise-correctly-shaped
+// attributed-join entity must not silently remove its cap.
+func TestPlanGeneration_JunctionCapAppliesDespiteExtraRequiredReference(t *testing.T) {
+	entities := []autoseed.Entity{
+		{Name: "Warehouse"},
+		{Name: "Product"},
+		{Name: "StorageZone"},
+		{
+			Name: "InventoryItem",
+			Fields: []autoseed.Field{
+				{Name: "WarehouseID", PrimaryKey: true},
+				{Name: "ProductID", PrimaryKey: true},
+			},
+			References: []autoseed.Reference{
+				{Fields: []string{"WarehouseID"}, Target: "Warehouse", Nullable: false},
+				{Fields: []string{"ProductID"}, Target: "Product", Nullable: false},
+				{Fields: []string{"StorageZoneID"}, Target: "StorageZone", Nullable: false},
+			},
+		},
+	}
+
+	for seed := uint64(0); seed < 200; seed++ {
+		plan := planFor(t, entities, autoseed.NewOptions(autoseed.WithSeed(seed), autoseed.WithScale(2)))
+		item := entityPlan(t, plan, "InventoryItem")
+		if item.JunctionTarget == "" {
+			t.Fatalf("seed %d: JunctionTarget not set despite Warehouse+Product exactly covering the primary key — the extra StorageZone reference must not disqualify the pair that does", seed)
+		}
+	}
+}
+
+func joinFields(fields []string) string {
+	if len(fields) == 0 {
+		return ""
+	}
+	out := fields[0]
+	for _, f := range fields[1:] {
+		out += "+" + f
+	}
+	return out
 }
 
 func TestPlanGeneration_Deterministic(t *testing.T) {

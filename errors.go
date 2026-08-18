@@ -35,6 +35,15 @@ var ErrUnsupportedField = errors.New("autoseed: no inference rule for field")
 // space is too small for the requested row count.
 var ErrUnsatisfiableUniqueness = errors.New("autoseed: could not generate a unique value")
 
+// ErrInvalidScale is returned when Options.Scale is negative: there is no
+// meaningful row count to draw from it.
+var ErrInvalidScale = errors.New("autoseed: scale must not be negative")
+
+// ErrNilSeed is returned when a *SeededSource parameter is nil: every
+// random draw in the pipeline must derive from one, so there is nothing
+// safe to do with its absence.
+var ErrNilSeed = errors.New("autoseed: seed is nil")
+
 func unknownReferenceError(entity string, fields []string, target string) error {
 	return fmt.Errorf("%w: %s.%s references %q", ErrUnknownReference, entity, strings.Join(fields, "+"), target)
 }
@@ -57,4 +66,8 @@ func invalidReferenceError(entity, target string) error {
 
 func unsatisfiableUniquenessError(entity, field string, attempts int) error {
 	return fmt.Errorf("%w: %s.%s after %d attempts", ErrUnsatisfiableUniqueness, entity, field, attempts)
+}
+
+func invalidScaleError(scale int) error {
+	return fmt.Errorf("%w: got %d", ErrInvalidScale, scale)
 }

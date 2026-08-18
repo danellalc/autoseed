@@ -14,10 +14,13 @@ const maxUniquenessAttempts = 20
 // constraints and non-string columns are not covered. The first row to
 // use a value keeps it; a later duplicate is rewritten with a random
 // numeric suffix, retried up to 20 times. seed must be scoped to the
-// entity, not a specific row. It returns ErrUnsatisfiableUniqueness,
-// naming the entity and field, if a value cannot be fixed within the
-// retry budget.
+// entity, not a specific row, and must not be nil. It returns
+// ErrUnsatisfiableUniqueness, naming the entity and field, if a value
+// cannot be fixed within the retry budget, or ErrNilSeed for a nil seed.
 func EnsureUnique(entity Entity, rows []map[string]any, seed *SeededSource) error {
+	if seed == nil {
+		return ErrNilSeed
+	}
 	for _, field := range entity.Fields {
 		if !field.Unique || field.Type == nil || field.Type.Kind() != reflect.String {
 			continue
@@ -82,9 +85,9 @@ func buildUniqueCandidate(value string, maxLength int, r *rand.Rand) (string, bo
 	if availableForPrefix < 0 {
 		availableForPrefix = 0
 	}
-	prefix := value
-	if len(prefix) > availableForPrefix {
-		prefix = prefix[:availableForPrefix]
+	prefixRunes := []rune(value)
+	if len(prefixRunes) > availableForPrefix {
+		prefixRunes = prefixRunes[:availableForPrefix]
 	}
-	return prefix + suffix, true
+	return string(prefixRunes) + suffix, true
 }
