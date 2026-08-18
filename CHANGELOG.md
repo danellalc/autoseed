@@ -92,6 +92,44 @@ change, even if the public API itself is unchanged.
   coherence would never have applied. Every field name (and the composite
   unique index and storage-key maps keyed by it) is now pascal-cased the
   same way an edge's own `Reference.Fields` name already was.
+- `SeedCoverage`, on both adapters: the smallest dataset that exercises
+  every field and relationship shape a model has, instead of a large,
+  realistic bulk one — every Nullable field left out and given a value,
+  every bool-kind field true and false, every sized string field at
+  empty, one character and its declared maximum length, every
+  relationship at zero, one and several (two) children — usually well
+  under 50 rows. `autoseed.PlanCoverage` reuses `PlanGeneration`'s entire
+  junction/shared-key-capping and required-target backstop machinery
+  unchanged, through a new shared `planWithStrategy` engine parameterized
+  by how many rows a root gets, how many children a driver row gets, and
+  a floor a dependent entity's own row count must reach after capping,
+  headroom permitting — the third decision is what lets an entity that is
+  simultaneously a dependent (has a required reference of its own) and
+  either a driver for something further downstream or the owner of its
+  own field axes still get enough rows for both roles, not just whichever
+  its immediate driver's child-count pattern happens to produce; a
+  shared-primary-key one-to-one still correctly degrades coverage's own
+  zero/one/two pattern to zero/one/one when the floor can't be reached,
+  exactly as it does for `Seed`. `autoseed.ApplyCoverageOverrides` writes
+  the field-axis boundary values into the rows `PlanCoverage` already
+  sized for them, cycling by row index; a reference's own foreign key
+  field and the entity's own primary key are both skipped, since neither
+  is this feature's to assign. A sized string field's one-character and
+  maximum-length variants use different filler characters so the two
+  never collapse into the same string when the declared size is exactly
+  one character; a Unique bool-kind field is only cycled across its first
+  two rows, since a third row would manufacture a duplicate `EnsureUnique`
+  has no way to repair (it only rewrites string-kind fields). `WithScale`
+  and `WithNilRate` are ignored by `SeedCoverage` — row counts and null
+  placement come from the model's own shape, not a scale factor or a
+  probability, and the generator itself is built with a nil rate of 0
+  regardless of what a caller passes, so `GenerateRow`'s own probabilistic
+  nil roll can never undermine a Nullable field's "both states appear"
+  guarantee; `WithSeed` and `WithLocale` still apply to whatever a
+  field's value isn't otherwise constrained by an axis. Tested against
+  real PostgreSQL on both adapters; MySQL, the combined "MegaMart" model,
+  and property-based tests are not yet part of `SeedCoverage`'s own test
+  surface — see [ARCHITECTURE.md](ARCHITECTURE.md#roadmap).
 
 ## [0.1.0]
 

@@ -66,6 +66,32 @@ func PlanGeneration(entities []Entity, order []string, deferred []DeferredRefere
 		return nil, invalidScaleError(options.Scale)
 	}
 
+	planSeed := seed.Entity("GenerationPlan")
+	return planWithStrategy(entities, order, deferred, planStrategy{
+		rootRowCount: func(Entity) int { return options.Scale },
+		childCounts: func(name string, driverRows int) []int {
+			return drawChildCounts(planSeed.Entity(name), driverRows)
+		},
+		rowFloor: func(string) int { return 0 },
+	}), nil
+}
+
+// planStrategy supplies the decisions PlanGeneration and PlanCoverage each
+// make differently — how many rows a root entity gets, how many children
+// each of a dependent's driver rows gets, and a floor a dependent's own
+// row count must reach after junction/shared-key capping, headroom
+// permitting — while sharing every other rule (the caps themselves, the
+// required-non-driver-target backstop) unchanged between the two.
+// PlanGeneration's rowFloor is always 0, a no-op: only PlanCoverage's own
+// row-count promises need a dependent entity boosted past what its
+// driver's child-count pattern alone would give it.
+type planStrategy struct {
+	rootRowCount func(entity Entity) int
+	childCounts  func(name string, driverRows int) []int
+	rowFloor     func(name string) int
+}
+
+func planWithStrategy(entities []Entity, order []string, deferred []DeferredReference, strategy planStrategy) *GenerationPlan {
 	byName := make(map[string]Entity, len(entities))
 	for _, entity := range entities {
 		byName[entity.Name] = entity
@@ -79,24 +105,25 @@ func PlanGeneration(entities []Entity, order []string, deferred []DeferredRefere
 
 	rowCounts := make(map[string]int, len(order))
 	plans := make([]EntityGenerationPlan, 0, len(order))
-	planSeed := seed.Entity("GenerationPlan")
 
 	for _, name := range order {
 		driver := selectDriver(byName[name], deferredEdges)
 
 		if driver == nil {
-			rowCounts[name] = options.Scale
-			plans = append(plans, EntityGenerationPlan{Entity: name, RowCount: options.Scale})
+			count := strategy.rootRowCount(byName[name])
+			rowCounts[name] = count
+			plans = append(plans, EntityGenerationPlan{Entity: name, RowCount: count})
 			continue
 		}
 
-		childCounts := drawChildCounts(planSeed.Entity(name), rowCounts[driver.Target])
+		childCounts := strategy.childCounts(name, rowCounts[driver.Target])
 
 		participants, maxPerDriverRow := junctionCap(byName[name], *driver, deferredEdges, rowCounts)
 		if len(participants) == 0 && sharesDriverPrimaryKey(byName[name], *driver, deferredEdges) {
 			maxPerDriverRow = 1
 		}
-		if len(participants) > 0 || maxPerDriverRow == 1 {
+		capped := len(participants) > 0 || maxPerDriverRow == 1
+		if capped {
 			for i, count := range childCounts {
 				if count > maxPerDriverRow {
 					childCounts[i] = maxPerDriverRow
@@ -107,6 +134,10 @@ func PlanGeneration(entities []Entity, order []string, deferred []DeferredRefere
 		total := 0
 		for _, count := range childCounts {
 			total += count
+		}
+
+		if floor := strategy.rowFloor(name); floor > total {
+			total = boostChildCounts(childCounts, capped, maxPerDriverRow, floor, total)
 		}
 
 		if total == 0 && requiredTargets[name] && rowCounts[driver.Target] > 0 {
@@ -125,7 +156,37 @@ func PlanGeneration(entities []Entity, order []string, deferred []DeferredRefere
 		})
 	}
 
-	return &GenerationPlan{Entities: plans}, nil
+	return &GenerationPlan{Entities: plans}
+}
+
+// boostChildCounts raises entries of childCounts, round-robin, until total
+// reaches floor or — when capped — every entry has reached maxPerDriverRow
+// and no more headroom is left. A strategy's own floor can therefore go
+// unmet when the driver row count times its own per-row cap is smaller
+// than the floor itself: a genuine structural limit (e.g. a
+// shared-primary-key one-to-one can never host more children than it has
+// driver rows), not a bug to work around. Distributing growth evenly,
+// rather than piling it onto the first entries, keeps as much of
+// childCounts' own zero/one variety intact as the floor allows.
+func boostChildCounts(childCounts []int, capped bool, maxPerDriverRow, floor, total int) int {
+	for len(childCounts) > 0 && total < floor {
+		progressed := false
+		for i := range childCounts {
+			if total >= floor {
+				break
+			}
+			if capped && childCounts[i] >= maxPerDriverRow {
+				continue
+			}
+			childCounts[i]++
+			total++
+			progressed = true
+		}
+		if !progressed {
+			break
+		}
+	}
+	return total
 }
 
 // junctionCap reports the other required references that, together with

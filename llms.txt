@@ -3,9 +3,9 @@
 > Reads a GORM or ent model — schema.Parse for GORM, entc.LoadGraph for ent — derives foreign-key
 > insertion order (stable topological sort), resolves cycles (a nullable edge in two passes, a
 > required-only cycle by naming it), and writes referentially valid rows through gormseed.Seed or
-> entseed.Seed — real inserts, tested against real PostgreSQL and MySQL. Status: in development;
-> gormseed.SeedCoverage is still design, not code. Read "Implemented today" vs "Planned" below
-> before generating code.
+> entseed.Seed (real inserts, tested against real PostgreSQL and MySQL) or their SeedCoverage
+> counterpart (tested against real PostgreSQL so far). Status: in development. Read "Implemented
+> today" vs "Planned" below before generating code.
 
 Unlike every other Go seeder, nothing is declared by hand — no YAML fixtures, no hand-written
 Seed() loops, no files numbered 01_, 02_ to get foreign-key order right. The model is the
@@ -101,16 +101,28 @@ same silent-normalize convention `WithNilRate`'s own clamping already establishe
 exists today; another locale is an on-demand addition, the same bar every adapter in this project
 ships under.
 
+```go
+// The smallest dataset that exercises everything, instead of a large bulk one.
+err = gormseed.SeedCoverage(ctx, db, models, autoseed.WithSeed(42))
+err = entseed.SeedCoverage(ctx, client, "./ent/schema", autoseed.WithSeed(42))
+```
+
+`SeedCoverage` sizes and shapes rows itself: every Nullable field left out and given a value,
+every bool-kind field true and false, every sized string field at empty, one character and its
+declared maximum length, every relationship at zero, one and several (two) children — folded into
+the same small row set rather than adding rows per axis, usually well under 50 rows. `WithScale`
+and `WithNilRate` are ignored, since row counts and null placement come from the model's own shape
+instead; `WithSeed` and `WithLocale` still apply to whatever a field's value isn't otherwise
+constrained by an axis. The sized-string axis never fires for `entseed.SeedCoverage`: unlike
+gormseed, `entc.LoadGraph` exposes no structured way to read a `MaxLen` validator back out, so
+`entseed`'s `ModelReader` never populates `Field.Size`.
+
 ## Planned, not implemented yet
 
 These identifiers do not exist in the module. Do not generate calls to them.
 
-```go
-err := gormseed.SeedCoverage(db, models)
-```
-
 Coherence across DIFFERENT entities (a child row's CreatedAt at or after its parent's) is not
-built either; coherence today is same-row only.
+built; coherence today is same-row only. A CLI (`autoseed explain`) is not built either.
 
 ## Guarantees
 
@@ -174,8 +186,8 @@ built either; coherence today is same-row only.
 
 ## Common mistakes when using this library
 
-- Do not generate a call to `gormseed.SeedCoverage` — it does not exist yet. Use `gormseed.Seed`
-  with a small `WithScale` for a small dataset instead.
+- Do not pass `WithScale` or `WithNilRate` to `SeedCoverage` expecting them to change row counts or
+  null placement — both are ignored there; row shape comes from the model itself.
 - Do not omit a related model from `models` — `Seed`/`Explain` return `ErrUnknownReference` naming
   what's missing, rather than a partial or guessed result.
 - Do not order entities manually. Order is derived from the model's foreign keys.

@@ -38,16 +38,7 @@ func Seed(ctx context.Context, db *gorm.DB, models []any, opts ...autoseed.Optio
 		return ErrNilDB
 	}
 
-	entities, schemas, _, err := read(db, models)
-	if err != nil {
-		return err
-	}
-
-	graph, err := autoseed.NewDependencyGraph(entities)
-	if err != nil {
-		return err
-	}
-	resolved, err := graph.Resolve()
+	entities, schemas, resolved, err := resolveModel(db, models)
 	if err != nil {
 		return err
 	}
@@ -59,6 +50,74 @@ func Seed(ctx context.Context, db *gorm.DB, models []any, opts ...autoseed.Optio
 		return err
 	}
 
+	return seedPlan(ctx, db, entities, schemas, resolved, plan, options, root, false)
+}
+
+// SeedCoverage writes the smallest dataset that exercises every field
+// and relationship shape the model has — every Nullable field both left
+// out and given a value, every bool-kind field true and false, every
+// sized string field at empty, one character and its declared maximum
+// length, every relationship at zero, one and several children —
+// instead of a large, realistic bulk dataset. Usually well under 50
+// rows.
+//
+// WithScale and WithNilRate are ignored: row counts come from the
+// model's own shape, not a scale factor, and every Nullable field's
+// null-vs-not split is decided by coverage itself, not a probability.
+// WithSeed and WithLocale still apply, to whatever value a field gets on
+// the rows coverage doesn't specifically constrain.
+func SeedCoverage(ctx context.Context, db *gorm.DB, models []any, opts ...autoseed.Option) error {
+	if db == nil {
+		return ErrNilDB
+	}
+
+	entities, schemas, resolved, err := resolveModel(db, models)
+	if err != nil {
+		return err
+	}
+
+	plan, err := autoseed.PlanCoverage(entities, resolved.Order, resolved.Deferred)
+	if err != nil {
+		return err
+	}
+
+	options := autoseed.NewOptions(opts...)
+	root := autoseed.NewSeededSource(options.Seed)
+	return seedPlan(ctx, db, entities, schemas, resolved, plan, options, root, true)
+}
+
+func resolveModel(db *gorm.DB, models []any) ([]autoseed.Entity, map[string]*schema.Schema, *autoseed.TopologicalSortResult, error) {
+	entities, schemas, _, err := read(db, models)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	graph, err := autoseed.NewDependencyGraph(entities)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	resolved, err := graph.Resolve()
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	return entities, schemas, resolved, nil
+}
+
+// seedPlan writes rows for a plan PlanGeneration or PlanCoverage already
+// computed; only the plan itself, whether coverage's own field-axis
+// overrides apply before EnsureUnique runs, and whether options.NilRate
+// reaches the generator at all, differ between Seed and SeedCoverage.
+func seedPlan(
+	ctx context.Context,
+	db *gorm.DB,
+	entities []autoseed.Entity,
+	schemas map[string]*schema.Schema,
+	resolved *autoseed.TopologicalSortResult,
+	plan *autoseed.GenerationPlan,
+	options autoseed.Options,
+	root *autoseed.SeededSource,
+	coverage bool,
+) error {
 	byName := entitiesByName(entities)
 	planByName := make(map[string]autoseed.EntityGenerationPlan, len(plan.Entities))
 	for _, p := range plan.Entities {
@@ -69,7 +128,18 @@ func Seed(ctx context.Context, db *gorm.DB, models []any, opts ...autoseed.Optio
 		deferredByEntity[d.Entity] = append(deferredByEntity[d.Entity], d)
 	}
 
-	generator := inference.NewDefaultGenerator().WithNilRate(options.NilRate).WithLocale(options.Locale)
+	nilRate := options.NilRate
+	if coverage {
+		// GenerateRow's own probabilistic nil roll must stay out of
+		// coverage's way: ApplyCoverageOverrides only force-nils the even
+		// rows of a Nullable field, trusting the odd rows to land on a
+		// real, non-nil value — a leftover NilRate>0 from a caller who
+		// passed WithNilRate to SeedCoverage anyway could null one of
+		// those odd rows too, silently defeating the "both states appear"
+		// guarantee the godoc promises.
+		nilRate = 0
+	}
+	generator := inference.NewDefaultGenerator().WithNilRate(nilRate).WithLocale(options.Locale)
 	inserted := make(map[string]*insertedEntity, len(entities))
 
 	for _, name := range resolved.Order {
@@ -80,6 +150,9 @@ func Seed(ctx context.Context, db *gorm.DB, models []any, opts ...autoseed.Optio
 		rows, err := generateRows(entity, entityPlan.RowCount, root.Entity(name), generator)
 		if err != nil {
 			return err
+		}
+		if coverage {
+			autoseed.ApplyCoverageOverrides(entity, rows)
 		}
 		if err := autoseed.EnsureUnique(entity, rows, root.Entity(name)); err != nil {
 			return err

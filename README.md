@@ -10,9 +10,9 @@ From the author of [EFCore.AutoSeed](https://github.com/danellalc/EFCore.AutoSee
 
 In development. This README describes the full design being built — see the [roadmap](ARCHITECTURE.md#roadmap) for what ships when.
 
-**Works today:** reading a GORM or ent model, `Explain`, and `Seed` on both adapters — real inserts, in dependency order, with long-tail cardinality, single-column and composite unique-field dedup, a cardinality cap that covers a ternary/N-ary "attributed join" as well as the pairwise case, deferred second-pass cycles, `WithNilRate` for leaving a Nullable field genuinely NULL at a configurable rate, and `WithLocale("pt_BR")` for Brazilian names, cities, streets and phone numbers — tested against real PostgreSQL and MySQL.
+**Works today:** reading a GORM or ent model, `Explain`, and `Seed` on both adapters — real inserts, in dependency order, with long-tail cardinality, single-column and composite unique-field dedup, a cardinality cap that covers a ternary/N-ary "attributed join" as well as the pairwise case, deferred second-pass cycles, `WithNilRate` for leaving a Nullable field genuinely NULL at a configurable rate, `WithLocale("pt_BR")` for Brazilian names, cities, streets and phone numbers — tested against real PostgreSQL and MySQL — and `SeedCoverage` on both adapters for the smallest dataset that exercises every field and relationship shape instead of a bulk one, tested against real PostgreSQL so far.
 
-**Not built yet:** `gormseed.SeedCoverage` and every value-realism knob beyond the ~16 built-in inference rules and the `pt_BR` locale (dirty data, weekday/business-hour clustering, another locale). Code blocks below that use them are the design, marked as such inline.
+**Not built yet:** every value-realism knob beyond the ~16 built-in inference rules and the `pt_BR` locale (dirty data, weekday/business-hour clustering, another locale), and the CLI. Code blocks below that use them are the design, marked as such inline.
 
 ## The problem
 
@@ -92,12 +92,12 @@ Prints the insertion order, which cycles got deferred to a second pass, and whic
 The opposite of bulk. The *smallest* dataset that exercises everything:
 
 ```go
-// Design target — not implemented yet, see Status above. Use gormseed.Seed
-// with a small WithScale for something that runs today.
-err := gormseed.SeedCoverage(db, []any{&Customer{}, &Order{}, &OrderItem{}})
+err := gormseed.SeedCoverage(ctx, db, []any{&Customer{}, &Order{}, &OrderItem{}},
+    autoseed.WithSeed(42),
+)
 ```
 
-Every enum-like field value, every nullable field in both states, every relationship at zero, one and many, every string at empty, one char and max length. Usually under 50 rows.
+Every nullable field in both states, every bool-kind field in both states, every sized string field at empty, one character and its declared maximum length, every relationship at zero, one and several children. Usually well under 50 rows. `WithScale` and `WithNilRate` are ignored — row counts and null placement come from the model's own shape, not a scale factor or a probability.
 
 ## Adapters
 
