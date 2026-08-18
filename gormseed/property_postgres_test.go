@@ -230,6 +230,49 @@ func TestSeed_Postgres_Property_SharedPrimaryKeyNeverDuplicates(t *testing.T) {
 	})
 }
 
+// SelfJunctionPerson mirrors a self-referencing many-to-many association
+// (a "follows" or "friends" table) — GORM's auto-generated join table has
+// two required references that both target Person, told apart only by
+// their own foreign key columns (FollowingID vs FollowerID), never by
+// Target name.
+type SelfJunctionPerson struct {
+	ID        uint                  `gorm:"primaryKey"`
+	Followers []*SelfJunctionPerson `gorm:"many2many:self_junction_follows;joinForeignKey:FollowingID;joinReferences:FollowerID"`
+}
+
+func TestSeed_Postgres_Property_SelfReferencingJunctionNeverSelfLoopsOrDuplicates(t *testing.T) {
+	db := postgresDB(t)
+	models := []any{&SelfJunctionPerson{}}
+	if err := db.AutoMigrate(models...); err != nil {
+		t.Fatalf("AutoMigrate: %v", err)
+	}
+
+	rapid.Check(t, func(rt *rapid.T) {
+		seed := rapid.Uint64().Draw(rt, "seed")
+		scale := rapid.IntRange(2, 6).Draw(rt, "scale") // scale=1: only one Person exists, a self-loop would be the only possible pairing
+
+		truncateAll(t, db, "self_junction_follows", "self_junction_people")
+		if err := gormseed.Seed(context.Background(), db, models, autoseed.WithSeed(seed), autoseed.WithScale(scale)); err != nil {
+			rt.Fatalf("Seed(seed=%d, scale=%d): %v", seed, scale, err)
+		}
+
+		assertNoOrphans(rt, db, "self_junction_follows", "following_id", "self_junction_people", "id")
+		assertNoOrphans(rt, db, "self_junction_follows", "follower_id", "self_junction_people", "id")
+
+		var total, distinct, selfLoops int64
+		db.Table("self_junction_follows").Count(&total)
+		db.Raw(`SELECT count(*) FROM (SELECT DISTINCT following_id, follower_id FROM self_junction_follows) d`).Scan(&distinct)
+		db.Raw(`SELECT count(*) FROM self_junction_follows WHERE following_id = follower_id`).Scan(&selfLoops)
+
+		if total != distinct {
+			rt.Fatalf("seed=%d scale=%d: %d rows but only %d distinct (following_id, follower_id) pairs", seed, scale, total, distinct)
+		}
+		if selfLoops != 0 {
+			rt.Fatalf("seed=%d scale=%d: %d rows follow themselves (following_id = follower_id)", seed, scale, selfLoops)
+		}
+	})
+}
+
 func truncateAll(t *testing.T, db *gorm.DB, tables ...string) {
 	t.Helper()
 	stmt := fmt.Sprintf("TRUNCATE TABLE %s RESTART IDENTITY CASCADE", strings.Join(tables, ", "))

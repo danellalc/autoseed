@@ -289,20 +289,19 @@ func TestSeed_Postgres_MegaMart_OrderLineTotalMatchesUnitPriceTimesQuantity(t *t
 	}
 }
 
+// TestSeed_Postgres_MegaMart_Deterministic guards the project's central
+// guarantee — same seed, same data, always — at the one integration
+// point that exercises the full gormseed.Seed pipeline against real
+// Postgres for the combined torture model. Row counts alone would pass
+// even if a map-iteration bug (the #1 documented determinism trap) made
+// a single generated field value diverge between runs, since counts come
+// entirely from PlanGeneration, independent of ValueGeneration — so this
+// compares actual field values across every entity, not just how many
+// rows each got.
 func TestSeed_Postgres_MegaMart_Deterministic(t *testing.T) {
 	db1 := postgresDB(t)
 	db2 := postgresDB(t)
 	models := megaMartModels()
-
-	rowCounts := func(db *gorm.DB) map[string]int64 {
-		counts := make(map[string]int64, len(models))
-		for _, table := range []string{"mm_companies", "mm_employees", "mm_warehouses", "mm_products", "mm_tags", "mm_product_profiles", "mm_inventory_items", "mm_orders", "mm_order_lines", "mm_audit_log_entries"} {
-			var count int64
-			db.Table(table).Count(&count)
-			counts[table] = count
-		}
-		return counts
-	}
 
 	for _, db := range []*gorm.DB{db1, db2} {
 		if err := db.AutoMigrate(models...); err != nil {
@@ -313,10 +312,62 @@ func TestSeed_Postgres_MegaMart_Deterministic(t *testing.T) {
 		}
 	}
 
-	counts1, counts2 := rowCounts(db1), rowCounts(db2)
-	for table, c1 := range counts1 {
-		if c2 := counts2[table]; c1 != c2 {
-			t.Fatalf("%s row count differs across runs with the same seed: %d vs %d", table, c1, c2)
+	var employees1, employees2 []MMEmployee
+	db1.Unscoped().Order("id").Find(&employees1)
+	db2.Unscoped().Order("id").Find(&employees2)
+	if len(employees1) != len(employees2) {
+		t.Fatalf("MMEmployee count differs: %d vs %d", len(employees1), len(employees2))
+	}
+	for i := range employees1 {
+		a, b := employees1[i], employees2[i]
+		if a.FirstName != b.FirstName || a.LastName != b.LastName || !a.HireDate.Equal(b.HireDate) || !deletedAtEqual(a.DeletedAt, b.DeletedAt) {
+			t.Fatalf("MMEmployee row %d differs: %+v vs %+v", i, a, b)
 		}
 	}
+
+	var products1, products2 []MMProduct
+	db1.Order("id").Find(&products1)
+	db2.Order("id").Find(&products2)
+	if len(products1) != len(products2) {
+		t.Fatalf("MMProduct count differs: %d vs %d", len(products1), len(products2))
+	}
+	for i := range products1 {
+		a, b := products1[i], products2[i]
+		if a.Sku != b.Sku || a.Name != b.Name || a.Description != b.Description || a.Dimensions != b.Dimensions {
+			t.Fatalf("MMProduct row %d differs: %+v vs %+v", i, a, b)
+		}
+	}
+
+	var orders1, orders2 []MMOrder
+	db1.Unscoped().Order("id").Find(&orders1)
+	db2.Unscoped().Order("id").Find(&orders2)
+	if len(orders1) != len(orders2) {
+		t.Fatalf("MMOrder count differs: %d vs %d", len(orders1), len(orders2))
+	}
+	for i := range orders1 {
+		a, b := orders1[i], orders2[i]
+		if a.Reference != b.Reference || !deletedAtEqual(a.DeletedAt, b.DeletedAt) {
+			t.Fatalf("MMOrder row %d differs: %+v vs %+v", i, a, b)
+		}
+	}
+
+	var lines1, lines2 []MMOrderLine
+	db1.Order("order_id, product_id").Find(&lines1)
+	db2.Order("order_id, product_id").Find(&lines2)
+	if len(lines1) != len(lines2) {
+		t.Fatalf("MMOrderLine count differs: %d vs %d", len(lines1), len(lines2))
+	}
+	for i := range lines1 {
+		a, b := lines1[i], lines2[i]
+		if a.UnitPrice != b.UnitPrice || a.Quantity != b.Quantity || a.Total != b.Total {
+			t.Fatalf("MMOrderLine row %d differs: %+v vs %+v", i, a, b)
+		}
+	}
+}
+
+func deletedAtEqual(a, b gorm.DeletedAt) bool {
+	if a.Valid != b.Valid {
+		return false
+	}
+	return !a.Valid || a.Time.Equal(b.Time)
 }

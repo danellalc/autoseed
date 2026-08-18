@@ -254,6 +254,11 @@ func TestSeed_Postgres_ManyToMany(t *testing.T) {
 	}
 }
 
+// TestSeed_Postgres_Deterministic compares actual generated field values
+// across every entity in the model, not just row counts — a map-iteration
+// bug could leave row counts (computed purely from PlanGeneration)
+// byte-identical while a generated value (from ValueGeneration) diverges
+// between runs, so counts alone would not catch it.
 func TestSeed_Postgres_Deterministic(t *testing.T) {
 	db1 := postgresDB(t)
 	db2 := postgresDB(t)
@@ -268,19 +273,39 @@ func TestSeed_Postgres_Deterministic(t *testing.T) {
 		}
 	}
 
-	var count1, count2 int64
-	db1.Model(&PGOrder{}).Count(&count1)
-	db2.Model(&PGOrder{}).Count(&count2)
-	if count1 != count2 {
-		t.Fatalf("Order count differs across runs with the same seed: %d vs %d", count1, count2)
+	var customers1, customers2 []PGCustomer
+	db1.Order("id").Find(&customers1)
+	db2.Order("id").Find(&customers2)
+	if len(customers1) != len(customers2) {
+		t.Fatalf("Customer count differs across runs with the same seed: %d vs %d", len(customers1), len(customers2))
+	}
+	for i := range customers1 {
+		if customers1[i].Email != customers2[i].Email {
+			t.Fatalf("Customer row %d differs across runs: %+v vs %+v", i, customers1[i], customers2[i])
+		}
 	}
 
 	var orders1, orders2 []PGOrder
 	db1.Order("id").Find(&orders1)
 	db2.Order("id").Find(&orders2)
+	if len(orders1) != len(orders2) {
+		t.Fatalf("Order count differs across runs with the same seed: %d vs %d", len(orders1), len(orders2))
+	}
 	for i := range orders1 {
 		if orders1[i].Street != orders2[i].Street || orders1[i].City != orders2[i].City {
-			t.Fatalf("row %d differs across runs: %+v vs %+v", i, orders1[i], orders2[i])
+			t.Fatalf("Order row %d differs across runs: %+v vs %+v", i, orders1[i], orders2[i])
+		}
+	}
+
+	var items1, items2 []PGOrderItem
+	db1.Order("id").Find(&items1)
+	db2.Order("id").Find(&items2)
+	if len(items1) != len(items2) {
+		t.Fatalf("OrderItem count differs across runs with the same seed: %d vs %d", len(items1), len(items2))
+	}
+	for i := range items1 {
+		if items1[i].Price != items2[i].Price || items1[i].Quantity != items2[i].Quantity || items1[i].Total != items2[i].Total {
+			t.Fatalf("OrderItem row %d differs across runs: %+v vs %+v", i, items1[i], items2[i])
 		}
 	}
 }

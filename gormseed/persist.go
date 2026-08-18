@@ -54,7 +54,10 @@ func Seed(ctx context.Context, db *gorm.DB, models []any, opts ...autoseed.Optio
 
 	options := autoseed.NewOptions(opts...)
 	root := autoseed.NewSeededSource(options.Seed)
-	plan := autoseed.PlanGeneration(entities, resolved.Order, resolved.Deferred, root, options)
+	plan, err := autoseed.PlanGeneration(entities, resolved.Order, resolved.Deferred, root, options)
+	if err != nil {
+		return err
+	}
 
 	byName := entitiesByName(entities)
 	planByName := make(map[string]autoseed.EntityGenerationPlan, len(plan.Entities))
@@ -129,6 +132,8 @@ func buildInstances(
 	deferredFields := referenceFieldSet(deferred)
 	driverRowOf := expandDriverRows(plan)
 	blockLocalOf := blockLocalIndices(plan)
+	driverKey := strings.Join(plan.DriverFields, "+")
+	junctionKey := strings.Join(plan.JunctionFields, "+")
 
 	instances := make([]any, len(rows))
 	for i, values := range rows {
@@ -145,7 +150,8 @@ func buildInstances(
 		}
 
 		for _, ref := range entity.References {
-			if deferredFields[strings.Join(ref.Fields, "+")] {
+			refKey := strings.Join(ref.Fields, "+")
+			if deferredFields[refKey] {
 				continue
 			}
 			parent, ok := inserted[ref.Target]
@@ -153,18 +159,33 @@ func buildInstances(
 				continue
 			}
 
+			// Matched by the reference's own foreign key fields, never by
+			// Target alone: a self-referencing many-to-many gives the
+			// driver and junction references the same Target, and only
+			// their Fields tell them apart.
 			parentIndex := i % len(parent.instances)
-			switch ref.Target {
-			case plan.Driver:
+			switch refKey {
+			case driverKey:
 				parentIndex = driverRowOf[i]
-			case plan.JunctionTarget:
+			case junctionKey:
 				// A junction row's non-driver parent must be distinct
 				// within its own driver row's block — reusing one would
 				// collide with a sibling row on the entity's own composite
 				// primary key. PlanGeneration already caps every block's
 				// length at the target's own row count, so a block-local,
 				// not global, index never needs to wrap mid-block.
-				parentIndex = blockLocalOf[i] % len(parent.instances)
+				n := len(parent.instances)
+				if ref.Target == plan.Driver {
+					// Self-referencing: offset past the driver row's own
+					// index so a row can never pair with itself.
+					// blockLocalOf[i] ranges over fewer values than n
+					// (junctionCap already reserved one slot for this),
+					// so the offset block of consecutive residues mod n
+					// never wraps back onto driverRowOf[i].
+					parentIndex = (blockLocalOf[i] + driverRowOf[i] + 1) % n
+				} else {
+					parentIndex = blockLocalOf[i] % n
+				}
 			}
 			if err := copyKey(ctx, parent.schema, reflect.ValueOf(parent.instances[parentIndex]).Elem(), entitySchema, instance, ref.Fields); err != nil {
 				return nil, err
@@ -248,14 +269,16 @@ func insertBatch(ctx context.Context, db *gorm.DB, entitySchema *schema.Schema, 
 
 // batchSizeFor returns the ordinary batch size unless entitySchema has no
 // field GORM will actually list in the INSERT statement — every field
-// auto-increment, so GORM emits INSERT ... DEFAULT VALUES, which has no
-// multi-row form and only ever reports the first row's generated ID back.
-// A composite primary key made of non-auto-increment foreign keys (a
-// many-to-many join table, an "attributed join" entity, a shared-primary-
-// key one-to-one) still has real values to list and batches normally.
+// either auto-increment or otherwise not creatable (gorm:"->" read-only,
+// gorm:"<-:false", a DB-computed column), so GORM emits
+// INSERT ... DEFAULT VALUES, which has no multi-row form and only ever
+// reports the first row's generated ID back. A composite primary key made
+// of non-auto-increment, creatable foreign keys (a many-to-many join
+// table, an "attributed join" entity, a shared-primary-key one-to-one)
+// still has real values to list and batches normally.
 func batchSizeFor(entitySchema *schema.Schema) int {
 	for _, field := range entitySchema.Fields {
-		if field.DBName != "" && !field.AutoIncrement {
+		if field.DBName != "" && field.Creatable && !field.AutoIncrement {
 			return insertBatchSize
 		}
 	}
