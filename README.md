@@ -12,7 +12,7 @@ In development. This README describes the full design being built — see the [r
 
 **Works today:** reading a GORM model, `gormseed.Explain`, and `gormseed.Seed` — real inserts, in dependency order, with long-tail cardinality, unique-field dedup, and deferred second-pass cycles, tested against real PostgreSQL and MySQL.
 
-**Not built yet:** `gormseed.SeedCoverage`, `WithLocale`, `WithNilRate`, and every value-realism knob beyond the ~15 built-in inference rules (dirty data, weekday/business-hour clustering, per-column null rate). Code blocks below that use them are the design, marked as such inline.
+**Not built yet:** `gormseed.SeedCoverage`, `WithLocale`, `WithNilRate`, and every value-realism knob beyond the ~16 built-in inference rules (dirty data, weekday/business-hour clustering, per-column null rate). Code blocks below that use them are the design, marked as such inline.
 
 ## The problem
 
@@ -25,7 +25,10 @@ And the data you end up with is uniform: every customer with three orders. In pr
 ## Usage
 
 ```go
-import "github.com/danellalc/autoseed/gormseed"
+import (
+    "github.com/danellalc/autoseed"
+    "github.com/danellalc/autoseed/gormseed"
+)
 
 err := gormseed.Seed(ctx, db, []any{&Customer{}, &Order{}, &OrderItem{}},
     autoseed.WithSeed(42),
@@ -120,7 +123,7 @@ GORM first because it is where most Go codebases are. ent second because its sch
 
 A property-based test asserts that for **any** model and **any** mix of nullable/required references, the engine either names an unsatisfiable cycle or produces an order that respects every foreign key; it runs on every commit against the graph and cycle engine directly, no database needed. A second layer of property tests runs `gormseed.Seed` itself, seed and scale rapid-varied, against a real containerized PostgreSQL and checks every row for orphaned foreign keys — a linear chain, a diamond of two required principals merging into one dependent, and a nullable self-reference.
 
-`gormseed.Seed` is also tested against real, containerized PostgreSQL and MySQL — never SQLite-only — covering a required-FK chain with long-tail cardinality, a nullable self-reference, a required/nullable two-entity cycle resolved in a second pass, and a many-to-many join table. A combined "MegaMart" model exercises every one of those shapes together in a single seed run — self-reference, embedded struct, composite primary keys, unique columns, soft-delete bias, a many-to-many join and a correlated derived value — the way a real application model mixes them. Against real, public schemas is still ahead of launch.
+`gormseed.Seed` is tested against real, containerized PostgreSQL — never SQLite-only — covering a required-FK chain with long-tail cardinality, a nullable self-reference, a required/nullable two-entity cycle resolved in a second pass, and a many-to-many join table. A combined "MegaMart" model exercises every one of those shapes together in a single seed run — self-reference, embedded struct, composite and shared primary keys, unique columns, soft-delete bias, a many-to-many join and a correlated derived value — the way a real application model mixes them. MySQL gets its own real-container test for the required-FK path and its `LastInsertId` batch arithmetic, not yet the same depth. Against real, public schemas is still ahead of launch.
 
 ## Compared to
 

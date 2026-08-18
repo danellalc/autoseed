@@ -1,7 +1,8 @@
 package autoseed
 
-// Options configures Seed and SeedCoverage. Build one with NewOptions and
-// functional Option values; the zero value is not meaningful on its own.
+// Options configures Seed (and, once built, the planned SeedCoverage).
+// Build one with NewOptions and functional Option values; the zero value
+// is not meaningful on its own.
 type Options struct {
 	Seed  uint64
 	Scale int

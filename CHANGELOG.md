@@ -21,22 +21,37 @@ deterministic rows — no hand-written ordering, no fixtures.
   insertion order and cycles, returns a `Plan` without writing anything.
 - `gormseed.Seed` — writes real rows in dependency order: required foreign
   keys copied from an already-inserted parent's real primary key, nullable
-  cycles patched in a second, deferred pass.
+  cycles patched in a second, deferred pass. Returns `gormseed.ErrNilDB`
+  for a nil `db` rather than reaching into it.
 - Deterministic generation: every random draw derives from one root seed,
   hierarchically and positionally (root → entity → row index → field). Same
   seed, same data, always — verified by a dedicated test, including an
   anti-map-iteration guard.
 - Stable topological sort (ties break on entity name) and Tarjan-based cycle
-  detection; a required cycle with no nullable edge to break it returns
-  `ErrUnsatisfiableCycle`, naming the real cycle path.
+  detection. Breaking a cycle defers only the one nullable edge needed to
+  make it acyclic, never every nullable edge in it, so an entity keeps
+  driving its cardinality off any reference a cycle didn't actually need
+  broken. A required cycle with no nullable edge to break it returns
+  `ErrUnsatisfiableCycle`, naming the real cycle path; every independent
+  unsatisfiable cycle in a model is named in one error, not just the first
+  found.
 - `autoseed.GenerationPlan`: long-tail cardinality (Exponential distribution)
   for related row counts, one driving principal per dependent entity, a
-  required non-driver reference target is never left at zero rows.
+  required non-driver reference target is never left at zero rows. A
+  composite-primary-key "attributed join" entity (a many-to-many table with
+  extra columns, or GORM's own auto-generated join table) caps each driver
+  row's child count at its other side's row count, and a shared-primary-key
+  one-to-one (the GORM equivalent of EF Core's table splitting) caps at
+  exactly one — either shape would otherwise risk two children colliding on
+  the same primary key.
 - ~16 built-in `inference` rules over gofakeit v7 (seeded): name/email/phone/
   address/URL, coherent `CreatedAt`/`UpdatedAt` and `Price`×`Quantity`=`Total`
   on the same row, a hand-rolled Brazilian CPF/CNPJ check-digit generator (no
   locale mechanism yet — matches on field name alone), and a soft-delete rule
-  that leaves `gorm.DeletedAt` unset on 90% of rows.
+  that leaves `gorm.DeletedAt` unset on 90% of rows and, for the rest, a
+  timestamp no earlier than the row's own `CreatedAt`/`UpdatedAt`. Every
+  rule's string output is truncated to the column's declared size before it
+  reaches the database, not just the generic fallback rule's.
 - `autoseed.EnsureUnique`: duplicate values for a single-column string unique
   field are rewritten with a random numeric suffix, retried up to 20 times,
   before `ErrUnsatisfiableUniqueness` names the field.
@@ -45,10 +60,20 @@ deterministic rows — no hand-written ordering, no fixtures.
   by name in the `Explain` report — generation is a v2 item.
 - Property-based tests (`pgregory.net/rapid`): the graph/cycle engine for any
   generated model and seed, and `gormseed.Seed` itself against real
-  PostgreSQL for a linear chain, a diamond of two required principals and a
-  nullable self-reference — no orphaned foreign keys, ever.
+  PostgreSQL for a linear chain, a diamond of two required principals, a
+  nullable self-reference, a composite-primary-key junction and a
+  shared-primary-key one-to-one — no orphaned foreign keys and no primary
+  key collisions, ever.
 - `examples/gormseed-basic`, a runnable example (its own Go module, `replace`
   points at this checkout) seeding a real SQLite database end to end.
+- `Seed` accepts `ctx` and now actually honors it: a canceled or
+  deadline-exceeded context stops in-flight batch inserts and the deferred
+  second-pass transaction, not just the in-memory value generation.
+- A many-to-many join table, or any other composite-primary-key entity
+  made entirely of non-auto-increment columns, batches inserts at the
+  normal size instead of one row at a time — the single-row fallback is
+  now scoped to what actually needs it (a table where every column is
+  auto-increment), not every primary-key-only table.
 
 ### Known gaps
 
@@ -56,11 +81,10 @@ deterministic rows — no hand-written ordering, no fixtures.
   not built.
 - Composite unique constraints and non-auto-increment (e.g. UUID) primary
   keys are not generated — primary keys are assumed database-generated.
-- A true one-to-one relationship (a child whose primary key is also its only
-  foreign key) is not modeled distinctly from one-to-many: cardinality is
-  always a long-tail draw.
-- SQLite is a supported target but untested against real `Seed` runs (the
-  test suite intentionally never treats it as the only surface).
+- The property tests and the "MegaMart" model run against PostgreSQL only;
+  MySQL's own coverage is a required-FK chain and its `LastInsertId` batch
+  arithmetic, not the same depth. SQLite runs `Seed`/`Explain` in the
+  package's own `Example` tests and the runnable example, narrower still.
 - `entseed` (ent adapter), a CLI, and every value-realism knob beyond the
   built-in rules (locale, null rate, dirty data, temporal clustering) are
   not built — see [ARCHITECTURE.md](ARCHITECTURE.md#roadmap).

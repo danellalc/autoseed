@@ -5,11 +5,14 @@
 One module, adapters as subpackages. **No separate repos, no separate modules** — one `go get` brings everything, and the adapter you don't import costs you nothing.
 
 ```
-github.com/danellalc/autoseed          core: options, plan, report, errors
-github.com/danellalc/autoseed/gormseed adapter: GORM
-github.com/danellalc/autoseed/entseed  adapter: ent (v2)
-github.com/danellalc/autoseed/cmd/autoseed  CLI (explain, later capture)
+github.com/danellalc/autoseed          core: options, plan, report, errors — ships today
+github.com/danellalc/autoseed/inference value generation, gofakeit-backed — ships today
+github.com/danellalc/autoseed/gormseed adapter: GORM — ships today
+github.com/danellalc/autoseed/entseed  adapter: ent — planned, v2
+github.com/danellalc/autoseed/cmd/autoseed  CLI (explain, later capture) — planned, v2
 ```
+
+`examples/` holds runnable, separately-moduled demo programs, one per adapter — not part of the public API.
 
 Core knows no ORM. Adapters know no CLI. The user imports one adapter and the option types from the root — nothing else.
 
@@ -77,7 +80,7 @@ Same seed, same data, always — the central guarantee.
 
 `CreateInBatches` for GORM path, one entity type at a time in dependency order: generate its rows, insert, and only then move to the next entity type, so a child's foreign keys are assigned from the parent's real, already-inserted primary key — never a value invented independently of what actually got written. For PostgreSQL, `RETURNING` covers the read-back; MySQL needs `LastInsertId` arithmetic on batches — verified against a real container, not SQLite-only.
 
-**A table with no column besides its primary key cannot be trusted with a multi-row batch.** Confirmed against real PostgreSQL, independent of this package: `INSERT INTO t DEFAULT VALUES` (what GORM emits when there is nothing else to insert) has no multi-row form, so a `CreateInBatches` call over N such rows reports back the first row's generated id and silently leaves the rest at their zero value — no error, just wrong foreign keys downstream. A many2many join table with no extra column, or the simplest possible lookup entity, hits this. The fix is a batch size of 1 whenever an entity has no field besides its primary key; everything else keeps the real batch size.
+**A table with no column GORM will actually list in the INSERT statement cannot be trusted with a multi-row batch.** Confirmed against real PostgreSQL, independent of this package: `INSERT INTO t DEFAULT VALUES` (what GORM emits when every column is an auto-increment field GORM omits) has no multi-row form, so a `CreateInBatches` call over N such rows reports back the first row's generated id and silently leaves the rest at their zero value — no error, just wrong foreign keys downstream. The simplest possible lookup entity — one auto-increment primary key, nothing else — hits this. A many2many join table does *not*: both its key columns are ordinary foreign keys, not auto-increment, so GORM lists real values for both and batches normally. The fix checks `AutoIncrement`, not `PrimaryKey` — batch size of 1 only when every field is auto-increment; everything else, including a composite key of non-auto-increment columns, keeps the real batch size. (An earlier version of this fix checked `PrimaryKey` instead and silently serialized every many2many insert to one row at a time — found by review, not by a failing test, since the wrong condition never produced wrong data, only wasted round-trips.)
 
 ### The InMemory lesson, Go edition
 
@@ -99,12 +102,14 @@ gofakeit has no locale support at all (v7.15.0, checked directly against its sou
 
 **Why errors, not panics.** Library code returns typed errors (`ErrUnsatisfiableCycle`, `ErrUnsupportedField`) wrapping context via `%w`. `errors.Is`/`errors.As` friendly. Panic in a library is an instant issue.
 
+**Why a required non-driver target at zero rows pads instead of erroring.** The .NET sibling throws a named exception when this happens (`Persistence.cs`'s `UnsupportedEntityTypeException`); Go instead floors that one driver row's child count to 1 (`generation_plan.go`'s `requiredReferenceTargets` check) and keeps going. Both avoid the real failure mode — a raw FK constraint violation — but land on opposite answers to "what should a caller see." autoseed's whole value proposition is `Seed(ctx, db, models, WithScale(1))` just working without the caller hunting for a seed/scale combination that dodges an edge case; throwing here would occasionally turn an ordinary small-scale request into an inexplicable failure. A deliberate divergence, not an unreconciled one — flagged in review as looking accidental, kept anyway, documented here so the next person doesn't "fix" it back to matching .NET without reading this paragraph first.
+
 ---
 
 ## Roadmap
 
 **v1 — GORM core**
-Model reading via `schema.Parse`, stable topological sort, nullable-cycle resolution, ~16 inference rules with coherence (FirstName+LastName+Email agree; UpdatedAt ≥ CreatedAt; Total = Price × Quantity) and a biased soft-delete rate, basic long tail, deterministic seed, `Seed` and `Explain` — shipped, tested against real PostgreSQL and MySQL, plus a combined "MegaMart" model and referential-integrity property tests exercising every shape together. `SeedCoverage` still open; SQLite is a supported target but untested; composite unique constraints and non-auto-increment (e.g. UUID) primary keys are not generated — same scope the .NET sibling ships with.
+Model reading via `schema.Parse`, stable topological sort, nullable-cycle resolution, ~16 inference rules with coherence (FirstName+LastName+Email agree; UpdatedAt ≥ CreatedAt; Total = Price × Quantity) and a biased soft-delete rate, basic long tail, deterministic seed, `Seed` and `Explain` — shipped, tested against real PostgreSQL and MySQL, plus a combined "MegaMart" model and referential-integrity property tests exercising every shape together. `SeedCoverage` still open; the property tests and the combined "MegaMart" model run against PostgreSQL only — MySQL's own coverage is a required-FK chain and its `LastInsertId` batch arithmetic, not the same depth; SQLite runs `Seed` and `Explain` in the example and the package's own `Example` tests, narrower still. Composite unique constraints and non-auto-increment (e.g. UUID) primary keys are not generated — same scope the .NET sibling ships with.
 
 **v2 — depth**
 ent adapter (proves the contract). Polymorphic generation. Temporal clustering, null rates, dirty-data mode. `autoseed explain` CLI. Benchmarks.

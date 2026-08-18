@@ -55,7 +55,7 @@ Seven stages; new code belongs to exactly one:
 - No comments on unexported identifiers — descriptive names instead. No emojis.
 - **Godoc on every exported identifier is mandatory** (starts with the name). It ships to pkg.go.dev and is the project's storefront.
 - `gofmt`, `go vet`, `golangci-lint` clean. Short lowercase package names (`gormseed`).
-- `context.Context` first parameter on anything touching a database. Error as last return.
+- `context.Context` first parameter on anything touching a database, and actually threaded into the query/exec call (`db.WithContext(ctx)`) — accepting it without wiring it through is a real bug, not a style nit; a canceled context must stop in-flight writes. Error as last return.
 - Accept interfaces, return structs. Functional options for configuration.
 - Table-driven tests as the default.
 
@@ -64,7 +64,8 @@ Seven stages; new code belongs to exactly one:
 - Property-based (pgregory.net/rapid): for any model and any seed, every FK references an existing row.
 - Determinism: same seed twice → byte-identical output; anti-map-iteration test runs repeatedly.
 - New inference rules and distribution shapes ship with tests.
-- The MegaMart torture model (self-reference, embedded struct, composite primary keys, unique columns, soft-delete, many2many, correlated derived values, all in one seed run) must stay green. Composite unique constraints and non-auto-increment primary keys are out of scope — not modeled.
+- The MegaMart torture model (self-reference, embedded struct, composite and shared primary keys, unique columns, soft-delete, many2many, correlated derived values, all in one seed run) must stay green. Composite unique constraints and non-auto-increment primary keys are out of scope — not modeled.
+- A composite-primary-key junction entity or a shared-primary-key one-to-one must never generate more children for a driver row than the primary key can hold without colliding — cap `GenerationPlan`'s draw, don't rely on the round-robin assignment in `persist.go` to paper over it. Any new "child's key is derived from the parent's" shape gets a property test at small scale (1-4), where the collision is easiest to trigger.
 
 ## Commits
 

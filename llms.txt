@@ -14,7 +14,9 @@ Sibling project: EFCore.AutoSeed (same author, same design, .NET).
 
 - Module: `github.com/danellalc/autoseed`
 - Adapters: `autoseed/gormseed` (GORM, implemented), `autoseed/entseed` (ent, planned)
-- Databases: PostgreSQL, MySQL tested against real containers; SQLite a supported target, untested
+- Databases: PostgreSQL, MySQL tested against real containers by the property/integration suite; SQLite
+  runs `Seed`/`Explain` in the package's own Example tests and the runnable example, not yet the same
+  property/orphan-check suite
 - License: MIT
 - Status: in development
 
@@ -27,7 +29,10 @@ go get github.com/danellalc/autoseed
 ## Implemented today
 
 ```go
-import "github.com/danellalc/autoseed/gormseed"
+import (
+    "github.com/danellalc/autoseed"
+    "github.com/danellalc/autoseed/gormseed"
+)
 
 models := []any{&Customer{}, &Order{}, &OrderItem{}}
 
@@ -47,11 +52,13 @@ pure reflection; `Seed` needs a real, migrated connection since it writes.
 
 `autoseed/inference` (~16 value-generation rules, gofakeit-backed) is what `Seed` calls per field:
 Email/Name/Phone/URL/Street/City, coherent CreatedAt/UpdatedAt and Price×Quantity=Total, a
-soft-delete field left nil (not deleted) 90% of the time, generic fallbacks by Go type, and one
-rule with no opt-in — any string field named `Cpf` or `Cnpj` (case-insensitive suffix, any
-project) generates a Brazilian document number with a valid check digit. This is not
-locale-gated — there is no locale mechanism yet — so a non-Brazilian project with a
-coincidentally matching field name gets Brazilian-format data.
+soft-delete field left nil (not deleted) 90% of the time and, for the rest, a timestamp no
+earlier than the row's own CreatedAt/UpdatedAt, generic fallbacks by Go type, and one rule with
+no opt-in — any string field named `Cpf` or `Cnpj` (case-insensitive suffix, any project)
+generates a Brazilian document number with a valid check digit. This is not locale-gated —
+there is no locale mechanism yet — so a non-Brazilian project with a coincidentally matching
+field name gets Brazilian-format data. Every rule's string output, named or generic, is
+truncated to the column's declared size before it reaches the database.
 
 ## Planned, not implemented yet
 
@@ -69,23 +76,40 @@ built either; coherence today is same-row only.
 ## Guarantees
 
 - Every foreign key `Seed` writes references a row that was actually inserted — verified against
-  real PostgreSQL and MySQL, not asserted from reasoning alone.
+  real, containerized PostgreSQL by a property-testing suite (random seed and scale), not asserted
+  from reasoning alone. MySQL and SQLite get a narrower, non-property test surface today.
 - Same seed, same data, across runs and machines. Map iteration never affects output.
-- A required foreign key cycle returns `autoseed.ErrUnsatisfiableCycle` naming the real cycle,
-  rather than a database throwing a constraint violation. A nullable one is inserted null, then
-  patched in a second pass once every row exists.
+- A required foreign key cycle returns `autoseed.ErrUnsatisfiableCycle` naming the real cycle —
+  every independent unsatisfiable cycle in one model, not just the first found — rather than a
+  database throwing a constraint violation. A nullable one is inserted null, then patched in a
+  second pass once every row exists; breaking a cycle defers only the one nullable edge actually
+  needed, never every nullable edge in it.
 - A duplicate value for a field tagged `unique` (single-column, string only) is rewritten with a
   random numeric suffix, retried up to 20 times, before `ErrUnsatisfiableUniqueness` names it.
   Composite unique constraints are not enforced.
 - A field GORM recognizes as its soft-delete column (`gorm.DeletedAt`) is left unset (visible) on
   about 90% of rows and given a past timestamp (deleted) on the rest — a fixed rate, not yet
   configurable.
+- A composite-primary-key "attributed join" entity (extra columns on a many-to-many table, or
+  GORM's own auto-generated join table) never generates more children for one driver row than
+  the other side has rows to pair with; a shared-primary-key one-to-one (the GORM equivalent of
+  EF Core's table splitting) never generates more than one child per driver row. Either shape,
+  uncapped, would risk two children colliding on the same primary key.
 - Embedded structs are written as columns, never as their own table.
 - Unsupported constructs (polymorphic associations, for now) are skipped BY NAME in the Explain
   report, never silently misread or misgenerated.
-- Primary keys are assumed database-generated (auto-increment/serial). A natural or
-  non-auto-increment primary key (e.g. an app-generated UUID) is left at its zero value, not
-  generated — give such entities an auto-increment surrogate key instead.
+- A Go named-integer "enum" (`type Status int` with `iota` constants) is generated as a plain number
+  in the generic fallback's range, not restricted to a declared constant — Go's reflection cannot
+  enumerate a type's declared constants the way C#'s `Enum.GetValues` can, so this is a language
+  limit, not an unported rule.
+- Primary keys are assumed database-generated (auto-increment/serial) — this is a *different* gap
+  from the shared-primary-key 1:1 case above, which is supported. A natural or non-auto-increment
+  primary key with no reference driving it at all (e.g. an app-generated UUID on a root entity) is
+  left at its zero value, not generated — give such entities an auto-increment surrogate key
+  instead.
+- `Seed`'s `ctx` is honored by the real database calls (batch inserts, the deferred-cycle
+  transaction), not just in-memory value generation — a canceled or deadline-exceeded context
+  stops in-flight writes. `Seed(ctx, nil, ...)` returns `gormseed.ErrNilDB` rather than panicking.
 
 ## Common mistakes when using this library
 
@@ -95,7 +119,8 @@ built either; coherence today is same-row only.
   what's missing, rather than a partial or guessed result.
 - Do not order entities manually. Order is derived from the model's foreign keys.
 - Do not pass a nil or unmigrated `db` to `Seed` — unlike `Explain`, it writes, and needs the
-  tables to already exist.
+  tables to already exist. A nil `db` returns `gormseed.ErrNilDB`; an unmigrated one returns
+  whatever error the database driver gives for a missing table.
 - Polymorphic associations are read but not generated; they appear as skipped in the Explain
   report, never as a reference.
 
