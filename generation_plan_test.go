@@ -168,6 +168,109 @@ func TestPlanGeneration_NonDriverRequiredTargetNeverEndsAtZero(t *testing.T) {
 	}
 }
 
+// TestPlanGeneration_JunctionCapsChildCountAtNonDriverRowCount guards a
+// real bug: InventoryItem-shaped entities (composite primary key made of
+// exactly the driver's and one other required reference's foreign key
+// columns — the shape of a many-to-many join table too) drew each driver
+// row's child count from the same unbounded long-tail distribution as any
+// other dependent entity. Whenever a draw exceeded the non-driver
+// target's own row count, gormseed.Seed could only satisfy it by reusing
+// a non-driver row within the same driver row's block, colliding on the
+// entity's own primary key at insert time. seed=185, scale=2 on this
+// exact Warehouse/Product/InventoryItem shape reproduced a raw SQLite
+// UNIQUE constraint violation before this fix.
+func TestPlanGeneration_JunctionCapsChildCountAtNonDriverRowCount(t *testing.T) {
+	entities := []autoseed.Entity{
+		{Name: "Warehouse"},
+		{Name: "Product"},
+		{
+			Name: "InventoryItem",
+			Fields: []autoseed.Field{
+				{Name: "WarehouseID", PrimaryKey: true},
+				{Name: "ProductID", PrimaryKey: true},
+			},
+			References: []autoseed.Reference{
+				{Fields: []string{"WarehouseID"}, Target: "Warehouse", Nullable: false},
+				{Fields: []string{"ProductID"}, Target: "Product", Nullable: false},
+			},
+		},
+	}
+
+	for seed := uint64(0); seed < 300; seed++ {
+		plan := planFor(t, entities, autoseed.NewOptions(autoseed.WithSeed(seed), autoseed.WithScale(2)))
+		item := entityPlan(t, plan, "InventoryItem")
+		warehouse := entityPlan(t, plan, "Warehouse")
+
+		if item.JunctionTarget != "Warehouse" {
+			t.Fatalf("seed %d: JunctionTarget = %q, want Warehouse", seed, item.JunctionTarget)
+		}
+		for i, count := range item.ChildCounts {
+			if count > warehouse.RowCount {
+				t.Fatalf("seed %d: Product row %d wants %d InventoryItem children, more than the %d Warehouse rows available to pair with — every pairing must be a distinct (Warehouse, Product), so this can never be satisfied without a duplicate", seed, i, count, warehouse.RowCount)
+			}
+		}
+	}
+}
+
+// TestPlanGeneration_NonJunctionSharedShapeUncapped guards against the
+// junction cap firing on an entity that only superficially resembles one:
+// two required references but its own primary key is a plain surrogate
+// ID, not composed of those references' fields. Two order lines for the
+// same product on the same order are a legitimate, uncapped shape.
+func TestPlanGeneration_NonJunctionSharedShapeUncapped(t *testing.T) {
+	entities := []autoseed.Entity{
+		{Name: "Order"},
+		{Name: "Product"},
+		{
+			Name: "OrderItem",
+			Fields: []autoseed.Field{
+				{Name: "ID", PrimaryKey: true, AutoIncrement: true},
+			},
+			References: []autoseed.Reference{
+				{Fields: []string{"OrderID"}, Target: "Order", Nullable: false},
+				{Fields: []string{"ProductID"}, Target: "Product", Nullable: false},
+			},
+		},
+	}
+
+	plan := planFor(t, entities, autoseed.NewOptions(autoseed.WithSeed(1), autoseed.WithScale(3)))
+	item := entityPlan(t, plan, "OrderItem")
+	if item.JunctionTarget != "" {
+		t.Fatalf("JunctionTarget = %q, want empty: OrderItem's primary key is its own surrogate ID, not the two references", item.JunctionTarget)
+	}
+}
+
+// TestPlanGeneration_SharedPrimaryKeyCapsAtOnePerDriverRow guards the
+// GORM equivalent of EF Core's table splitting: ProductProfile.ProductID
+// is both its own primary key and its only foreign key to Product. A
+// driver row's foreign key value is copied verbatim into the child's own
+// primary key, so a second child for the same driver row would collide
+// on it — the long-tail draw must never exceed 1 per driver row here.
+func TestPlanGeneration_SharedPrimaryKeyCapsAtOnePerDriverRow(t *testing.T) {
+	entities := []autoseed.Entity{
+		{Name: "Product"},
+		{
+			Name: "ProductProfile",
+			Fields: []autoseed.Field{
+				{Name: "ProductID", PrimaryKey: true},
+			},
+			References: []autoseed.Reference{
+				{Fields: []string{"ProductID"}, Target: "Product", Nullable: false},
+			},
+		},
+	}
+
+	for seed := uint64(0); seed < 300; seed++ {
+		plan := planFor(t, entities, autoseed.NewOptions(autoseed.WithSeed(seed), autoseed.WithScale(3)))
+		profile := entityPlan(t, plan, "ProductProfile")
+		for i, count := range profile.ChildCounts {
+			if count > 1 {
+				t.Fatalf("seed %d: Product row %d wants %d ProductProfile children, want at most 1 (its ProductID is both PK and FK)", seed, i, count)
+			}
+		}
+	}
+}
+
 func TestPlanGeneration_Deterministic(t *testing.T) {
 	entities := []autoseed.Entity{
 		{Name: "Customer"},

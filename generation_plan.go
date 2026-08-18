@@ -11,12 +11,18 @@ const defaultMeanChildrenPerParent = 3.0
 
 // EntityGenerationPlan is the row count and cardinality decision for one
 // entity: how many rows to generate and, for a dependent entity, how many
-// of them belong to each row of its driving principal.
+// of them belong to each row of its driving principal. JunctionTarget is
+// set only when the entity's own primary key is exactly the driver's and
+// this target's foreign key columns together — a many-to-many join table,
+// or an explicit composite-key "attributed join" entity like an inventory
+// or order-line row — where each driver row can pair with a given
+// JunctionTarget row at most once.
 type EntityGenerationPlan struct {
-	Entity      string
-	RowCount    int
-	Driver      string
-	ChildCounts []int
+	Entity         string
+	RowCount       int
+	Driver         string
+	ChildCounts    []int
+	JunctionTarget string
 }
 
 // GenerationPlan is the row count and cardinality decision for every
@@ -60,6 +66,19 @@ func PlanGeneration(entities []Entity, order []string, deferred []DeferredRefere
 		}
 
 		childCounts := drawChildCounts(planSeed.Entity(name), rowCounts[driver])
+
+		junctionTarget, maxPerDriverRow := junctionCap(byName[name], driver, deferredEdges, rowCounts)
+		if junctionTarget == "" && sharesDriverPrimaryKey(byName[name], driver, deferredEdges) {
+			maxPerDriverRow = 1
+		}
+		if junctionTarget != "" || maxPerDriverRow == 1 {
+			for i, count := range childCounts {
+				if count > maxPerDriverRow {
+					childCounts[i] = maxPerDriverRow
+				}
+			}
+		}
+
 		total := 0
 		for _, count := range childCounts {
 			total += count
@@ -71,10 +90,103 @@ func PlanGeneration(entities []Entity, order []string, deferred []DeferredRefere
 		}
 
 		rowCounts[name] = total
-		plans = append(plans, EntityGenerationPlan{Entity: name, RowCount: total, Driver: driver, ChildCounts: childCounts})
+		plans = append(plans, EntityGenerationPlan{Entity: name, RowCount: total, Driver: driver, ChildCounts: childCounts, JunctionTarget: junctionTarget})
 	}
 
 	return &GenerationPlan{Entities: plans}
+}
+
+// junctionCap reports the target entity and row count of entity's one
+// other required reference when, together with driver, it exactly
+// accounts for every field of entity's own primary key — the shape of a
+// many-to-many join table or an explicit composite-key "attributed join"
+// entity. Each driver row can pair with a given target row at most once,
+// so a driver row's child count can never exceed how many target rows
+// exist: asking for more than that is asking for more distinct pairs
+// than the target side can supply, which PlanGeneration's caller then
+// cannot assign without duplicating a pair and colliding on the primary
+// key. Returns ("", 0) for any other shape.
+func junctionCap(entity Entity, driver string, deferredEdges map[string]bool, rowCounts map[string]int) (string, int) {
+	var required []Reference
+	for _, ref := range entity.References {
+		if ref.Nullable || deferredEdges[deferredEdgeKey(entity.Name, ref.Fields)] {
+			continue
+		}
+		required = append(required, ref)
+	}
+	if len(required) != 2 {
+		return "", 0
+	}
+
+	pkFields := make(map[string]bool)
+	for _, field := range entity.Fields {
+		if field.PrimaryKey {
+			pkFields[field.Name] = true
+		}
+	}
+	if len(pkFields) == 0 {
+		return "", 0
+	}
+
+	target := ""
+	refFields := make(map[string]bool)
+	for _, ref := range required {
+		if ref.Target != driver {
+			if target != "" {
+				return "", 0
+			}
+			target = ref.Target
+		}
+		for _, field := range ref.Fields {
+			refFields[field] = true
+		}
+	}
+	if target == "" || len(refFields) != len(pkFields) {
+		return "", 0
+	}
+	for field := range refFields {
+		if !pkFields[field] {
+			return "", 0
+		}
+	}
+
+	return target, rowCounts[target]
+}
+
+// sharesDriverPrimaryKey reports whether entity's only required reference
+// is to driver and that reference's foreign key fields are exactly
+// entity's own primary key — a shared-primary-key one-to-one, the GORM
+// equivalent of EF Core's table splitting. A driver row's foreign key
+// value becomes the child's own primary key verbatim, so two children for
+// the same driver row would collide on it: at most one child per driver
+// row, never a long-tail count.
+func sharesDriverPrimaryKey(entity Entity, driver string, deferredEdges map[string]bool) bool {
+	var required []Reference
+	for _, ref := range entity.References {
+		if ref.Nullable || deferredEdges[deferredEdgeKey(entity.Name, ref.Fields)] {
+			continue
+		}
+		required = append(required, ref)
+	}
+	if len(required) != 1 || required[0].Target != driver {
+		return false
+	}
+
+	pkFields := make(map[string]bool)
+	for _, field := range entity.Fields {
+		if field.PrimaryKey {
+			pkFields[field.Name] = true
+		}
+	}
+	if len(pkFields) == 0 || len(pkFields) != len(required[0].Fields) {
+		return false
+	}
+	for _, field := range required[0].Fields {
+		if !pkFields[field] {
+			return false
+		}
+	}
+	return true
 }
 
 // requiredReferenceTargets returns the set of entity names that some other
