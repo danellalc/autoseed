@@ -3,12 +3,15 @@
 All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows
 [Semantic Versioning](https://semver.org/) — in Go, a major bump also changes
-the import path, so v1.0.0 is held back deliberately until the API settles.
+the import path, so every breaking change past v1.0.0 gets weighed against
+that cost before it ships.
 
 Any change that alters the data generated for a given seed is a breaking
 change, even if the public API itself is unchanged.
 
 ## [Unreleased]
+
+## [1.0.0] - 2026-08-18
 
 ### Added
 
@@ -148,6 +151,28 @@ change, even if the public API itself is unchanged.
   rejected the same way. An `Explain` error is printed as-is, without an
   added prefix, since `entseed`'s and `autoseed`'s own errors already
   self-identify their source.
+
+### Known gaps
+
+- Cross-entity coherence (a child row's `CreatedAt` at or after its
+  parent's), dirty-data mode, and weekday/business-hour temporal
+  clustering are not built. Coherence today is same-row only.
+- Only the `pt_BR` locale exists; another locale is an on-demand
+  addition.
+- A many-to-many edge on either adapter (ent's edges, GORM's
+  polymorphic associations) is read and named as skipped, never
+  generated.
+- `SeedCoverage`'s own test surface is narrower than `Seed`/`Explain`'s:
+  real PostgreSQL only, no MySQL leg, no combined "MegaMart" model, no
+  property-based tests.
+- `cmd/autoseed` is `explain` only, for ent schemas only — see
+  [ARCHITECTURE.md](ARCHITECTURE.md#design-decisions) for why writing
+  real rows and GORM models stay Go-API-only.
+- The property tests and the combined "MegaMart" model run against
+  PostgreSQL only; MySQL's own coverage is a required-FK chain and its
+  `LastInsertId` batch arithmetic, not the same depth; SQLite runs
+  `Seed`/`Explain` in the package's own `Example` tests and the runnable
+  example, narrower still.
 
 ## [0.1.0]
 

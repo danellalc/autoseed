@@ -4,7 +4,7 @@
 > insertion order (stable topological sort), resolves cycles (a nullable edge in two passes, a
 > required-only cycle by naming it), and writes referentially valid rows through gormseed.Seed or
 > entseed.Seed (real inserts, tested against real PostgreSQL and MySQL) or their SeedCoverage
-> counterpart (tested against real PostgreSQL so far). Status: in development. Read "Implemented
+> counterpart (tested against real PostgreSQL so far). Status: v1.0.0 released. Read "Implemented
 > today" vs "Planned" below before generating code.
 
 Unlike every other Go seeder, nothing is declared by hand — no YAML fixtures, no hand-written
@@ -19,7 +19,7 @@ Sibling project: EFCore.AutoSeed (same author, same design, .NET).
   runs `Seed`/`Explain` in the package's own Example tests and the runnable example, not yet the same
   property/orphan-check suite
 - License: MIT
-- Status: in development
+- Status: v1.0.0 released
 
 ## Install
 

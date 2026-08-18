@@ -8,7 +8,7 @@ From the author of [EFCore.AutoSeed](https://github.com/danellalc/EFCore.AutoSee
 
 ## Status
 
-In development. This README describes the full design being built — see the [roadmap](ARCHITECTURE.md#roadmap) for what ships when.
+v1.0.0. Everything under "Works today" below ships in this release — see the [roadmap](ARCHITECTURE.md#roadmap) for what's next.
 
 **Works today:** reading a GORM or ent model, `Explain`, and `Seed` on both adapters — real inserts, in dependency order, with long-tail cardinality, single-column and composite unique-field dedup, a cardinality cap that covers a ternary/N-ary "attributed join" as well as the pairwise case, deferred second-pass cycles, `WithNilRate` for leaving a Nullable field genuinely NULL at a configurable rate, `WithLocale("pt_BR")` for Brazilian names, cities, streets and phone numbers — tested against real PostgreSQL and MySQL — `SeedCoverage` on both adapters for the smallest dataset that exercises every field and relationship shape instead of a bulk one, tested against real PostgreSQL so far, and a small CLI (`autoseed explain`) for reading an ent schema straight from source, no database or generated client needed.
 
