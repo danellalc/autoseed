@@ -15,6 +15,8 @@ import (
 	"github.com/danellalc/autoseed/entseed/internal/entfixtures/customer"
 	"github.com/danellalc/autoseed/entseed/internal/entfixtures/employee"
 	"github.com/danellalc/autoseed/entseed/internal/entfixtures/order"
+	"github.com/danellalc/autoseed/entseed/internal/entfixtures/product"
+	"github.com/danellalc/autoseed/entseed/internal/entfixtures/tag"
 )
 
 // ent aliases to avoid import conflicts in user's code.
@@ -78,6 +80,8 @@ func checkColumn(t, c string) error {
 			customer.Table: customer.ValidColumn,
 			employee.Table: employee.ValidColumn,
 			order.Table:    order.ValidColumn,
+			product.Table:  product.ValidColumn,
+			tag.Table:      tag.ValidColumn,
 		})
 	})
 	return columnCheck(t, c)

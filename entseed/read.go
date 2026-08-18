@@ -15,27 +15,29 @@ import (
 	"github.com/danellalc/autoseed"
 )
 
-func read(schemaPath string) ([]autoseed.Entity, *gen.Graph, error) {
+func read(schemaPath string) ([]autoseed.Entity, *gen.Graph, []autoseed.SkipReason, error) {
 	graph, err := entc.LoadGraph(schemaPath, &gen.Config{})
 	if err != nil {
-		return nil, nil, fmt.Errorf("entseed: loading schema %q: %w", schemaPath, err)
+		return nil, nil, nil, fmt.Errorf("entseed: loading schema %q: %w", schemaPath, err)
 	}
 
 	entities := make([]autoseed.Entity, 0, len(graph.Nodes))
+	var skipped []autoseed.SkipReason
 	for _, node := range graph.Nodes {
-		entity, err := buildEntity(node)
+		entity, nodeSkipped, err := buildEntity(node)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 		entities = append(entities, entity)
+		skipped = append(skipped, nodeSkipped...)
 	}
-	return entities, graph, nil
+	return entities, graph, skipped, nil
 }
 
-func buildEntity(node *gen.Type) (autoseed.Entity, error) {
+func buildEntity(node *gen.Type) (autoseed.Entity, []autoseed.SkipReason, error) {
 	idType, err := goType(node.ID.Type)
 	if err != nil {
-		return autoseed.Entity{}, fmt.Errorf("entseed: %s.%s: %w", node.Name, node.ID.Name, err)
+		return autoseed.Entity{}, nil, fmt.Errorf("entseed: %s.%s: %w", node.Name, node.ID.Name, err)
 	}
 	fields := []autoseed.Field{{
 		Name:          node.ID.Name,
@@ -50,7 +52,7 @@ func buildEntity(node *gen.Type) (autoseed.Entity, error) {
 		}
 		fieldType, err := goType(f.Type)
 		if err != nil {
-			return autoseed.Entity{}, fmt.Errorf("entseed: %s.%s: %w", node.Name, f.Name, err)
+			return autoseed.Entity{}, nil, fmt.Errorf("entseed: %s.%s: %w", node.Name, f.Name, err)
 		}
 		fields = append(fields, autoseed.Field{
 			Name:     f.Name,
@@ -61,8 +63,26 @@ func buildEntity(node *gen.Type) (autoseed.Entity, error) {
 	}
 
 	var references []autoseed.Reference
+	var skipped []autoseed.SkipReason
 	for _, e := range node.Edges {
-		if !e.OwnFK() || e.M2M() {
+		if e.M2M() {
+			// ent links a many-to-many pair through dedicated
+			// Add<Edge>IDs-style edge mutation methods, never by
+			// inserting into an addressable join-table entity the way
+			// GORM's auto-generated join struct works -- generation for
+			// this shape needs its own design, not a partial guess.
+			// Reported from one side only (the non-inverse one) so a
+			// symmetric M2M pair isn't named twice.
+			if !e.IsInverse() {
+				skipped = append(skipped, autoseed.SkipReason{
+					Entity: node.Name,
+					Field:  e.Name,
+					Reason: "many-to-many edges are read but not generated yet",
+				})
+			}
+			continue
+		}
+		if !e.OwnFK() {
 			continue
 		}
 		// The mutation's generic SetField only reaches regular schema
@@ -76,7 +96,7 @@ func buildEntity(node *gen.Type) (autoseed.Entity, error) {
 		})
 	}
 
-	return autoseed.Entity{Name: node.Name, Fields: fields, References: references}, nil
+	return autoseed.Entity{Name: node.Name, Fields: fields, References: references}, skipped, nil
 }
 
 // pascal converts an ent identifier (camelCase or snake_case) to the

@@ -59,15 +59,67 @@ var (
 			},
 		},
 	}
+	// ProductsColumns holds the columns for the "products" table.
+	ProductsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt, Increment: true},
+		{Name: "sku", Type: field.TypeString, Unique: true},
+	}
+	// ProductsTable holds the schema information for the "products" table.
+	ProductsTable = &schema.Table{
+		Name:       "products",
+		Columns:    ProductsColumns,
+		PrimaryKey: []*schema.Column{ProductsColumns[0]},
+	}
+	// TagsColumns holds the columns for the "tags" table.
+	TagsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt, Increment: true},
+		{Name: "name", Type: field.TypeString, Unique: true},
+	}
+	// TagsTable holds the schema information for the "tags" table.
+	TagsTable = &schema.Table{
+		Name:       "tags",
+		Columns:    TagsColumns,
+		PrimaryKey: []*schema.Column{TagsColumns[0]},
+	}
+	// ProductTagsColumns holds the columns for the "product_tags" table.
+	ProductTagsColumns = []*schema.Column{
+		{Name: "product_id", Type: field.TypeInt},
+		{Name: "tag_id", Type: field.TypeInt},
+	}
+	// ProductTagsTable holds the schema information for the "product_tags" table.
+	ProductTagsTable = &schema.Table{
+		Name:       "product_tags",
+		Columns:    ProductTagsColumns,
+		PrimaryKey: []*schema.Column{ProductTagsColumns[0], ProductTagsColumns[1]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "product_tags_product_id",
+				Columns:    []*schema.Column{ProductTagsColumns[0]},
+				RefColumns: []*schema.Column{ProductsColumns[0]},
+				OnDelete:   schema.Cascade,
+			},
+			{
+				Symbol:     "product_tags_tag_id",
+				Columns:    []*schema.Column{ProductTagsColumns[1]},
+				RefColumns: []*schema.Column{TagsColumns[0]},
+				OnDelete:   schema.Cascade,
+			},
+		},
+	}
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
 		CustomersTable,
 		EmployeesTable,
 		OrdersTable,
+		ProductsTable,
+		TagsTable,
+		ProductTagsTable,
 	}
 )
 
 func init() {
 	EmployeesTable.ForeignKeys[0].RefTable = EmployeesTable
 	OrdersTable.ForeignKeys[0].RefTable = CustomersTable
+	ProductTagsTable.ForeignKeys[0].RefTable = ProductsTable
+	ProductTagsTable.ForeignKeys[1].RefTable = TagsTable
 }

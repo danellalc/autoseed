@@ -38,7 +38,7 @@ func Seed(ctx context.Context, client any, schemaPath string, opts ...autoseed.O
 		return ErrNilClient
 	}
 
-	entities, _, err := read(schemaPath)
+	entities, _, _, err := read(schemaPath)
 	if err != nil {
 		return err
 	}

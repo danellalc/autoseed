@@ -18,6 +18,10 @@ type Tx struct {
 	Employee *EmployeeClient
 	// Order is the client for interacting with the Order builders.
 	Order *OrderClient
+	// Product is the client for interacting with the Product builders.
+	Product *ProductClient
+	// Tag is the client for interacting with the Tag builders.
+	Tag *TagClient
 
 	// lazily loaded.
 	client     *Client
@@ -152,6 +156,8 @@ func (tx *Tx) init() {
 	tx.Customer = NewCustomerClient(tx.config)
 	tx.Employee = NewEmployeeClient(tx.config)
 	tx.Order = NewOrderClient(tx.config)
+	tx.Product = NewProductClient(tx.config)
+	tx.Tag = NewTagClient(tx.config)
 }
 
 // txDriver wraps the given dialect.Tx with a nop dialect.Driver implementation.

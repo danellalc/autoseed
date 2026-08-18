@@ -14,3 +14,9 @@ type Employee func(*sql.Selector)
 
 // Order is the predicate function for order builders.
 type Order func(*sql.Selector)
+
+// Product is the predicate function for product builders.
+type Product func(*sql.Selector)
+
+// Tag is the predicate function for tag builders.
+type Tag func(*sql.Selector)

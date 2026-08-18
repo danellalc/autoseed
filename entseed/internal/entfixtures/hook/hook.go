@@ -45,6 +45,30 @@ func (f OrderFunc) Mutate(ctx context.Context, m entfixtures.Mutation) (entfixtu
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *entfixtures.OrderMutation", m)
 }
 
+// The ProductFunc type is an adapter to allow the use of ordinary
+// function as Product mutator.
+type ProductFunc func(context.Context, *entfixtures.ProductMutation) (entfixtures.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ProductFunc) Mutate(ctx context.Context, m entfixtures.Mutation) (entfixtures.Value, error) {
+	if mv, ok := m.(*entfixtures.ProductMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *entfixtures.ProductMutation", m)
+}
+
+// The TagFunc type is an adapter to allow the use of ordinary
+// function as Tag mutator.
+type TagFunc func(context.Context, *entfixtures.TagMutation) (entfixtures.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f TagFunc) Mutate(ctx context.Context, m entfixtures.Mutation) (entfixtures.Value, error) {
+	if mv, ok := m.(*entfixtures.TagMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *entfixtures.TagMutation", m)
+}
+
 // Condition is a hook condition function.
 type Condition func(context.Context, entfixtures.Mutation) bool
 

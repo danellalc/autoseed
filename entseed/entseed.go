@@ -26,9 +26,9 @@ func (s source) Entities() ([]autoseed.Entity, error) {
 // Explain reads the ent schema at schemaPath and resolves the result
 // into a Plan, without writing anything.
 func Explain(schemaPath string) (*autoseed.Plan, error) {
-	entities, _, err := read(schemaPath)
+	entities, _, skipped, err := read(schemaPath)
 	if err != nil {
 		return nil, err
 	}
-	return autoseed.Explain(source{entities: entities})
+	return autoseed.Explain(source{entities: entities}, skipped...)
 }

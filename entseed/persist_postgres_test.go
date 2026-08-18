@@ -3,6 +3,7 @@ package entseed_test
 import (
 	"context"
 	"database/sql"
+	"strings"
 	"testing"
 
 	entsql "entgo.io/ent/dialect/sql"
@@ -165,6 +166,55 @@ func TestExplain_Basic(t *testing.T) {
 	orderPos := indexOf(report, "Order\n")
 	if customerPos == -1 || orderPos == -1 || customerPos > orderPos {
 		t.Fatalf("Customer must be inserted before Order, got:\n%s", report)
+	}
+}
+
+// TestExplain_ManyToManySkippedNamed guards the "fail by name, never
+// silently" rule: a many-to-many edge (Product.tags/Tag.products) is a
+// real, common ent shape entseed doesn't generate for yet. Explain must
+// name it in the Skipped section, not just drop it with no trace, and
+// name it exactly once even though ent declares it from both sides.
+func TestExplain_ManyToManySkippedNamed(t *testing.T) {
+	plan, err := entseed.Explain(schemaPath)
+	if err != nil {
+		t.Fatalf("Explain: %v", err)
+	}
+
+	report := plan.Report()
+	if !containsLine(report, "Skipped:\n") {
+		t.Fatalf("Report() missing a Skipped section for the Product/Tag many-to-many:\n%s", report)
+	}
+	if count := strings.Count(report, "many-to-many edges are read but not generated yet"); count != 1 {
+		t.Fatalf("many-to-many skip reason appears %d times, want exactly 1 (reported from one side only):\n%s", count, report)
+	}
+}
+
+// TestSeed_Postgres_ManyToManySkippedDoesNotBlockOtherEntities guards
+// that a skipped many-to-many edge doesn't stop Product and Tag from
+// being seeded on their own -- only the association between them is
+// left ungenerated.
+func TestSeed_Postgres_ManyToManySkippedDoesNotBlockOtherEntities(t *testing.T) {
+	client := entClient(t)
+	ctx := context.Background()
+
+	if err := entseed.Seed(ctx, client, schemaPath, autoseed.WithSeed(3), autoseed.WithScale(10)); err != nil {
+		t.Fatalf("Seed: %v", err)
+	}
+
+	productCount, err := client.Product.Query().Count(ctx)
+	if err != nil {
+		t.Fatalf("counting products: %v", err)
+	}
+	if productCount != 10 {
+		t.Fatalf("Product count = %d, want 10", productCount)
+	}
+
+	tagCount, err := client.Tag.Query().Count(ctx)
+	if err != nil {
+		t.Fatalf("counting tags: %v", err)
+	}
+	if tagCount != 10 {
+		t.Fatalf("Tag count = %d, want 10", tagCount)
 	}
 }
 
