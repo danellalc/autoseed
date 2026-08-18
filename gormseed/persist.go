@@ -69,7 +69,7 @@ func Seed(ctx context.Context, db *gorm.DB, models []any, opts ...autoseed.Optio
 		deferredByEntity[d.Entity] = append(deferredByEntity[d.Entity], d)
 	}
 
-	generator := inference.NewDefaultGenerator()
+	generator := inference.NewDefaultGenerator().WithNilRate(options.NilRate)
 	inserted := make(map[string]*insertedEntity, len(entities))
 
 	for _, name := range resolved.Order {

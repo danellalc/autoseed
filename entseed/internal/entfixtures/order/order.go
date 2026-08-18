@@ -16,6 +16,8 @@ const (
 	FieldStreet = "street"
 	// FieldCity holds the string denoting the city field in the database.
 	FieldCity = "city"
+	// FieldNotes holds the string denoting the notes field in the database.
+	FieldNotes = "notes"
 	// EdgeCustomer holds the string denoting the customer edge name in mutations.
 	EdgeCustomer = "customer"
 	// Table holds the table name of the order in the database.
@@ -34,6 +36,7 @@ var Columns = []string{
 	FieldID,
 	FieldStreet,
 	FieldCity,
+	FieldNotes,
 }
 
 // ForeignKeys holds the SQL foreign-keys that are owned by the "orders"
@@ -73,6 +76,11 @@ func ByStreet(opts ...sql.OrderTermOption) OrderOption {
 // ByCity orders the results by the city field.
 func ByCity(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldCity, opts...).ToFunc()
+}
+
+// ByNotes orders the results by the notes field.
+func ByNotes(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldNotes, opts...).ToFunc()
 }
 
 // ByCustomerField orders the results by customer field.

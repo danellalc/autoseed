@@ -28,15 +28,29 @@ type Rule interface {
 // already produced this row (FirstName before Email, CreatedAt before
 // UpdatedAt), never the reverse.
 type Generator struct {
-	rules []Rule
+	rules   []Rule
+	nilRate float64
 }
 
 // NewGenerator returns a Generator trying rules in ascending Priority
-// order.
+// order, with no null rate — every Nullable field always gets a
+// generated value. Use WithNilRate to change that.
 func NewGenerator(rules ...Rule) *Generator {
 	sorted := append([]Rule(nil), rules...)
 	sort.SliceStable(sorted, func(i, j int) bool { return sorted[i].Priority() < sorted[j].Priority() })
 	return &Generator{rules: sorted}
+}
+
+// WithNilRate sets the per-row probability GenerateRow leaves a Nullable
+// field's value out entirely instead of running its matched rule, and
+// returns g for chaining. A field the adapter also flagged SoftDelete is
+// never subject to this: SoftDeleteRule already owns that field's own,
+// more deliberate null-vs-not split. The roll is independent of whatever
+// randomness a surviving field's own rule draws — surviving a rate below
+// 1.0 never biases that rule's output toward a particular range.
+func (g *Generator) WithNilRate(rate float64) *Generator {
+	g.nilRate = rate
+	return g
 }
 
 // GenerateRow produces a value for every field on entity that isn't
@@ -52,8 +66,14 @@ func NewGenerator(rules ...Rule) *Generator {
 // sql.NullInt64, sql.NullBool, sql.NullFloat64, sql.NullTime, and the
 // narrower NullInt32/NullInt16/NullByte) is matched against rules by its
 // wrapped value's type, so a field named Email of type sql.NullString
-// still gets EmailRule's treatment, not just generic text, and always
-// comes back Valid — there is no null-rate knob yet.
+// still gets EmailRule's treatment, not just generic text.
+//
+// Before any rule runs, a field.Nullable field has its own chance, set by
+// WithNilRate, of being left out of the row entirely instead of matched
+// to a rule at all — that field's value comes back nil, which the caller
+// must persist as a real database NULL. A field also flagged SoftDelete
+// is never subject to this: SoftDeleteRule already owns that field's own
+// null-vs-not split.
 //
 // seed must already be scoped to the row, typically
 // source.Entity(entity.Name).Row(index). It returns
@@ -67,7 +87,7 @@ func (g *Generator) GenerateRow(entity autoseed.Entity, seed *autoseed.SeededSou
 	fields := make([]autoseed.Field, len(entity.Fields))
 	nullableFields := make(map[string]reflect.Type, len(entity.Fields))
 	for i, field := range entity.Fields {
-		if isNullableWrapper(field.Type) {
+		if IsNullableWrapper(field.Type) {
 			nullableFields[field.Name] = field.Type
 			field.Type = unwrapNullable(field.Type)
 		}
@@ -76,6 +96,25 @@ func (g *Generator) GenerateRow(entity autoseed.Entity, seed *autoseed.SeededSou
 
 	values := make(map[string]any, len(fields))
 	claimed := make(map[string]bool, len(fields))
+
+	if g.nilRate > 0 {
+		for _, field := range fields {
+			if databaseGenerated(field) || skip[field.Name] || !field.Nullable || field.SoftDelete {
+				continue
+			}
+			// A field's own SeededSource (seed.Field(field.Name), below)
+			// is a pure function of (seed, name): deriving the null roll
+			// from that same node, instead of a distinct one, would hand
+			// a surviving field's rule the exact draw that just decided
+			// it would survive -- entangling the two and biasing the
+			// rule's own output toward whatever range that draw implies,
+			// for any rule that itself consumes seed.Rand() first.
+			if seed.Field(field.Name).Field("NilRate").Rand().Float64() < g.nilRate {
+				claimed[field.Name] = true
+				values[field.Name] = nil
+			}
+		}
+	}
 
 	for _, rule := range g.rules {
 		for _, field := range fields {

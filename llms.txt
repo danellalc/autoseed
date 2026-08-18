@@ -1,10 +1,11 @@
 # autoseed (Go)
 
-> Reads a GORM model via schema.Parse, derives foreign-key insertion order (stable topological
-> sort), resolves cycles (a nullable edge in two passes, a required-only cycle by naming it), and
-> writes referentially valid rows through gormseed.Seed — real inserts, tested against real
-> PostgreSQL and MySQL. Status: in development; gormseed.SeedCoverage and locale/null-rate options
-> are still design, not code. Read "Implemented today" vs "Planned" below before generating code.
+> Reads a GORM or ent model — schema.Parse for GORM, entc.LoadGraph for ent — derives foreign-key
+> insertion order (stable topological sort), resolves cycles (a nullable edge in two passes, a
+> required-only cycle by naming it), and writes referentially valid rows through gormseed.Seed or
+> entseed.Seed — real inserts, tested against real PostgreSQL and MySQL. Status: in development;
+> gormseed.SeedCoverage and locale are still design, not code. Read "Implemented today" vs
+> "Planned" below before generating code.
 
 Unlike every other Go seeder, nothing is declared by hand — no YAML fixtures, no hand-written
 Seed() loops, no files numbered 01_, 02_ to get foreign-key order right. The model is the
@@ -13,7 +14,7 @@ specification.
 Sibling project: EFCore.AutoSeed (same author, same design, .NET).
 
 - Module: `github.com/danellalc/autoseed`
-- Adapters: `autoseed/gormseed` (GORM, implemented), `autoseed/entseed` (ent, planned)
+- Adapters: `autoseed/gormseed` (GORM, implemented), `autoseed/entseed` (ent, implemented)
 - Databases: PostgreSQL, MySQL tested against real containers by the property/integration suite; SQLite
   runs `Seed`/`Explain` in the package's own Example tests and the runnable example, not yet the same
   property/orphan-check suite
@@ -50,6 +51,31 @@ struct it has ever used, unlike an EF Core `DbContext`, so the list is stated ex
 call. `Explain`'s `db` may be `nil`, or not yet connected to a real database — reading a model is
 pure reflection; `Seed` needs a real, migrated connection since it writes.
 
+```go
+import (
+    "github.com/danellalc/autoseed"
+    "github.com/danellalc/autoseed/entseed"
+)
+
+// schemaPath is the Go import path (or relative path) to the package
+// holding the ent.Schema definitions, typically "./ent/schema" — ent
+// exposes its resolved schema graph only through entc.LoadGraph, which
+// loads it from source, so there is no model list to pass explicitly
+// the way gormseed needs one.
+err := entseed.Seed(ctx, client, "./ent/schema", autoseed.WithSeed(42), autoseed.WithScale(1_000))
+
+plan, err := entseed.Explain("./ent/schema")
+fmt.Println(plan.Report())
+```
+
+`entseed`'s `client` is the generated `*ent.Client` (or a type embedding one); it must not be nil.
+ent has no composite primary keys, so a composite-key "attributed join" or ternary/N-ary
+relationship is expressed there as a surrogate ID plus a composite `UniqueConstraints` entry
+(`index.Fields(...)`/`index.Edges(...)` in the ent schema), not a composite primary key — both
+adapters' cardinality capping understands either shape. A many-to-many edge (ent has no
+addressable join-table entity for one, unlike GORM's auto-generated join struct) is read but not
+generated: it appears once, by name, in `Explain`'s Skipped section.
+
 `autoseed/inference` (~16 value-generation rules, gofakeit-backed) is what `Seed` calls per field:
 Email/Name/Phone/URL/Street/City, coherent CreatedAt/UpdatedAt and Price×Quantity=Total, a
 soft-delete field left nil (not deleted) 90% of the time and, for the rest, a timestamp no
@@ -60,9 +86,11 @@ there is no locale mechanism yet — so a non-Brazilian project with a coinciden
 field name gets Brazilian-format data. Every rule's string output, named or generic, is
 truncated to the column's declared size, by rune not by byte, before it reaches the database. A
 field typed `sql.NullString`/`NullInt64`/`NullBool`/`NullFloat64`/`NullTime` (and the narrower
-`NullInt32`/`NullInt16`/`NullByte`) is matched against rules by its wrapped value's type, so
-`Email sql.NullString` still gets EmailRule's treatment, then comes back with `Valid: true` —
-there is no null-rate knob yet, so it is never actually NULL.
+`NullInt32`/`NullInt16`/`NullByte`), or a Go pointer field, is matched against rules by its
+wrapped/pointed-to type, so `Email sql.NullString` still gets EmailRule's treatment.
+`autoseed.WithNilRate(rate)` sets the per-row probability such a field is left out entirely
+instead, producing a real database NULL — 0 by default, so every existing call keeps its current
+behavior unless a project opts in.
 
 ## Planned, not implemented yet
 
@@ -70,11 +98,10 @@ These identifiers do not exist in the module. Do not generate calls to them.
 
 ```go
 err := gormseed.SeedCoverage(db, models)
+opts := autoseed.WithLocale("pt_BR")
 ```
 
-Planned functional options, none implemented yet: `WithLocale("pt_BR")`, `WithNilRate(0.2)`. Every
-field, nullable or not, currently always gets a concrete non-nil value — no per-column null rate
-yet. Coherence across DIFFERENT entities (a child row's CreatedAt at or after its parent's) is not
+Coherence across DIFFERENT entities (a child row's CreatedAt at or after its parent's) is not
 built either; coherence today is same-row only.
 
 ## Guarantees
@@ -89,24 +116,36 @@ built either; coherence today is same-row only.
   second pass once every row exists; breaking a cycle defers only the one nullable edge actually
   needed, never every nullable edge in it.
 - A duplicate value for a field tagged `unique` (single-column, string only) is rewritten with a
-  random numeric suffix, retried up to 20 times, before `ErrUnsatisfiableUniqueness` names it.
-  Composite unique constraints are not enforced.
+  random numeric suffix, retried up to 20 times, before `ErrUnsatisfiableUniqueness` names it. A
+  composite unique constraint (GORM's `uniqueIndex` tag; ent's `index.Fields`/`index.Edges`) with
+  at least one non-foreign-key string column gets the same treatment on its tuple; two constraints
+  that share a rewritable field are resolved together, not independently, so fixing one can never
+  silently reopen a duplicate under the other. A constraint spanning only foreign key columns is
+  left to the generation plan's cardinality cap instead, described below.
 - A field GORM recognizes as its soft-delete column (`gorm.DeletedAt`) is left unset (visible) on
   about 90% of rows and given a past timestamp (deleted) on the rest — a fixed rate, not yet
   configurable.
-- A composite-primary-key "attributed join" entity (extra columns on a many-to-many table, or
-  GORM's own auto-generated join table) never generates more children for one driver row than
-  the other side has rows to pair with; a shared-primary-key one-to-one (the GORM equivalent of
-  EF Core's table splitting) never generates more than one child per driver row. A
-  self-referencing many-to-many (both foreign keys targeting the same entity, e.g. a "follows"
-  table) is recognized the same way — the two references are told apart by their own foreign key
-  columns, never by target name — and never generates a row that pairs with itself. Either shape,
-  uncapped, would risk two children colliding on the same primary key. A composite primary key of
-  three or more foreign key columns (a ternary relationship) is not covered by this and stays
-  uncapped.
+- `autoseed.WithNilRate(rate)` leaves a Nullable field's value out entirely at that per-row
+  probability, producing a real database NULL — a field is only Nullable when its Go
+  representation can actually hold one (a pointer, a `database/sql` wrapper, or, for ent, any
+  `Optional()` field, which its own `ClearField` handles uniformly). A plain, non-pointer field a
+  schema happens to allow NULL at the column level, but with no Go-level way to represent absence,
+  is never subject to this — generating nothing meaningful for it would just be a Go zero value
+  wearing a NULL's name.
+- A composite key — the entity's own primary key, or a `UniqueConstraints` entry spanning foreign
+  key columns — covered by a driver reference plus one OR MORE other required references (a
+  many-to-many join table, an "attributed join" entity with extra columns, or a ternary/N-ary
+  relationship with three or more participants) never generates more children for one driver row
+  than the other participants can jointly supply distinct combinations for — capped at the product
+  of their own row counts. A shared-primary-key one-to-one (the GORM equivalent of EF Core's table
+  splitting) never generates more than one child per driver row. A self-referencing participant
+  (both foreign keys targeting the same entity, e.g. a "follows" table, or a participant
+  referencing its own driver's target) is recognized the same way — participants are told apart by
+  their own foreign key columns, never by target name — and never generates a row that pairs with
+  itself. Any of these, uncapped, would risk colliding on the same key.
 - Embedded structs are written as columns, never as their own table.
-- Unsupported constructs (polymorphic associations, for now) are skipped BY NAME in the Explain
-  report, never silently misread or misgenerated.
+- Unsupported constructs (GORM's polymorphic associations; ent's many-to-many edges, for now) are
+  skipped BY NAME in the Explain report, never silently misread or misgenerated.
 - A Go named-integer "enum" (`type Status int` with `iota` constants) is generated as a plain number
   in the generic fallback's range, not restricted to a declared constant — Go's reflection cannot
   enumerate a type's declared constants the way C#'s `Enum.GetValues` can, so this is a language
@@ -134,13 +173,14 @@ built either; coherence today is same-row only.
 - Do not order entities manually. Order is derived from the model's foreign keys.
 - Do not pass a nil or unmigrated `db` to `Seed` — unlike `Explain`, it writes, and needs the
   tables to already exist. A nil `db` returns `gormseed.ErrNilDB`; an unmigrated one returns
-  whatever error the database driver gives for a missing table.
-- Polymorphic associations are read but not generated; they appear as skipped in the Explain
-  report, never as a reference.
+  whatever error the database driver gives for a missing table. `entseed.Seed`'s nil client check
+  returns `entseed.ErrNilClient` the same way.
+- Polymorphic associations (GORM) and many-to-many edges (ent) are read but not generated; they
+  appear as skipped in the Explain report, never as a reference.
 
 ## Not supported
 
-- ORMs other than GORM (ent is planned; others on demand with traction).
+- ORMs other than GORM and ent (others on demand with traction).
 - Databases other than PostgreSQL, MySQL, SQLite.
 - Production data anonymisation. No cloud, no service.
 

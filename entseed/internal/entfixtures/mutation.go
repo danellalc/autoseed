@@ -2073,6 +2073,7 @@ type OrderMutation struct {
 	id              *int
 	street          *string
 	city            *string
+	notes           *string
 	clearedFields   map[string]struct{}
 	customer        *int
 	clearedcustomer bool
@@ -2251,6 +2252,55 @@ func (m *OrderMutation) ResetCity() {
 	m.city = nil
 }
 
+// SetNotes sets the "notes" field.
+func (m *OrderMutation) SetNotes(s string) {
+	m.notes = &s
+}
+
+// Notes returns the value of the "notes" field in the mutation.
+func (m *OrderMutation) Notes() (r string, exists bool) {
+	v := m.notes
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldNotes returns the old "notes" field's value of the Order entity.
+// If the Order object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *OrderMutation) OldNotes(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldNotes is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldNotes requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldNotes: %w", err)
+	}
+	return oldValue.Notes, nil
+}
+
+// ClearNotes clears the value of the "notes" field.
+func (m *OrderMutation) ClearNotes() {
+	m.notes = nil
+	m.clearedFields[order.FieldNotes] = struct{}{}
+}
+
+// NotesCleared returns if the "notes" field was cleared in this mutation.
+func (m *OrderMutation) NotesCleared() bool {
+	_, ok := m.clearedFields[order.FieldNotes]
+	return ok
+}
+
+// ResetNotes resets all changes to the "notes" field.
+func (m *OrderMutation) ResetNotes() {
+	m.notes = nil
+	delete(m.clearedFields, order.FieldNotes)
+}
+
 // SetCustomerID sets the "customer" edge to the Customer entity by id.
 func (m *OrderMutation) SetCustomerID(id int) {
 	m.customer = &id
@@ -2324,12 +2374,15 @@ func (m *OrderMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *OrderMutation) Fields() []string {
-	fields := make([]string, 0, 2)
+	fields := make([]string, 0, 3)
 	if m.street != nil {
 		fields = append(fields, order.FieldStreet)
 	}
 	if m.city != nil {
 		fields = append(fields, order.FieldCity)
+	}
+	if m.notes != nil {
+		fields = append(fields, order.FieldNotes)
 	}
 	return fields
 }
@@ -2343,6 +2396,8 @@ func (m *OrderMutation) Field(name string) (ent.Value, bool) {
 		return m.Street()
 	case order.FieldCity:
 		return m.City()
+	case order.FieldNotes:
+		return m.Notes()
 	}
 	return nil, false
 }
@@ -2356,6 +2411,8 @@ func (m *OrderMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldStreet(ctx)
 	case order.FieldCity:
 		return m.OldCity(ctx)
+	case order.FieldNotes:
+		return m.OldNotes(ctx)
 	}
 	return nil, fmt.Errorf("unknown Order field %s", name)
 }
@@ -2378,6 +2435,13 @@ func (m *OrderMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetCity(v)
+		return nil
+	case order.FieldNotes:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetNotes(v)
 		return nil
 	}
 	return fmt.Errorf("unknown Order field %s", name)
@@ -2408,7 +2472,11 @@ func (m *OrderMutation) AddField(name string, value ent.Value) error {
 // ClearedFields returns all nullable fields that were cleared during this
 // mutation.
 func (m *OrderMutation) ClearedFields() []string {
-	return nil
+	var fields []string
+	if m.FieldCleared(order.FieldNotes) {
+		fields = append(fields, order.FieldNotes)
+	}
+	return fields
 }
 
 // FieldCleared returns a boolean indicating if a field with the given name was
@@ -2421,6 +2489,11 @@ func (m *OrderMutation) FieldCleared(name string) bool {
 // ClearField clears the value of the field with the given name. It returns an
 // error if the field is not defined in the schema.
 func (m *OrderMutation) ClearField(name string) error {
+	switch name {
+	case order.FieldNotes:
+		m.ClearNotes()
+		return nil
+	}
 	return fmt.Errorf("unknown Order nullable field %s", name)
 }
 
@@ -2433,6 +2506,9 @@ func (m *OrderMutation) ResetField(name string) error {
 		return nil
 	case order.FieldCity:
 		m.ResetCity()
+		return nil
+	case order.FieldNotes:
+		m.ResetNotes()
 		return nil
 	}
 	return fmt.Errorf("unknown Order field %s", name)

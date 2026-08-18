@@ -1,6 +1,7 @@
 package gormseed
 
 import (
+	"database/sql"
 	"errors"
 	"sort"
 	"strings"
@@ -403,6 +404,43 @@ func TestRead_SoftDeleteNotGuessedFromFieldName(t *testing.T) {
 	deletedAt := fieldNamed(t, entityNamed(t, entities, "PlainTimestamp"), "DeletedAt")
 	if deletedAt.SoftDelete {
 		t.Fatal("a plain time.Time field named DeletedAt must not be marked SoftDelete: detection must go through schema.QueryClausesInterface, never the field name")
+	}
+}
+
+// TestRead_NullableRequiresAGoRepresentationOfAbsence guards Field.Nullable's
+// real meaning: not "the column's schema allows NULL" but "generation can
+// actually leave this out and have it become a real database NULL."
+// PlainOptional has no not-null tag, so GORM sees it as nullable at the
+// schema level, but its Go type (a bare string) has no way to represent
+// absence -- Field.Set silently writes the zero value for a nil write, not
+// SQL NULL. PtrOptional and WrapperOptional both can, so only those two
+// come back Nullable=true.
+func TestRead_NullableRequiresAGoRepresentationOfAbsence(t *testing.T) {
+	type NullableShapes struct {
+		ID              int `gorm:"primaryKey"`
+		PlainOptional   string
+		PtrOptional     *string
+		WrapperOptional sql.NullString
+		NotNullPtr      *string `gorm:"not null"`
+	}
+
+	entities, _, _, err := read(nil, []any{&NullableShapes{}})
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+
+	entity := entityNamed(t, entities, "NullableShapes")
+	if fieldNamed(t, entity, "PlainOptional").Nullable {
+		t.Fatal("PlainOptional is a plain string with no Go-level way to represent absence, want Nullable=false")
+	}
+	if !fieldNamed(t, entity, "PtrOptional").Nullable {
+		t.Fatal("PtrOptional is a pointer, want Nullable=true")
+	}
+	if !fieldNamed(t, entity, "WrapperOptional").Nullable {
+		t.Fatal("WrapperOptional is a database/sql nullable wrapper, want Nullable=true")
+	}
+	if fieldNamed(t, entity, "NotNullPtr").Nullable {
+		t.Fatal("NotNullPtr has a not-null tag, want Nullable=false regardless of its pointer Go type")
 	}
 }
 

@@ -118,6 +118,37 @@ func TestSeed_Postgres_BasicChain(t *testing.T) {
 	}
 }
 
+// TestSeed_Postgres_NilRateClearsOptionalField guards null rate's entseed
+// path end to end: Order.notes is an Optional, non-Nillable ent field --
+// mutation.SetField would panic on a raw nil for it, so createRows must
+// route a nulled field through mutation.ClearField instead. At nil rate
+// 1.0 every order's Notes comes back empty (ent's own convention for an
+// unset optional string field read back from a real NULL column).
+func TestSeed_Postgres_NilRateClearsOptionalField(t *testing.T) {
+	client := entClient(t)
+	ctx := context.Background()
+
+	if err := entseed.Seed(ctx, client, schemaPath, autoseed.WithSeed(1), autoseed.WithScale(20), autoseed.WithNilRate(1)); err != nil {
+		t.Fatalf("Seed: %v", err)
+	}
+
+	orders, err := client.Order.Query().All(ctx)
+	if err != nil {
+		t.Fatalf("querying orders: %v", err)
+	}
+	if len(orders) == 0 {
+		t.Fatal("Order is empty, want at least some rows")
+	}
+	for _, o := range orders {
+		if o.Notes != "" {
+			t.Fatalf("order %d: Notes = %q, want empty (cleared) at nil rate 1.0", o.ID, o.Notes)
+		}
+		if o.Street == "" || o.City == "" {
+			t.Fatalf("order %d: Street/City must still get a real value -- neither is Nullable", o.ID)
+		}
+	}
+}
+
 func TestSeed_Postgres_NullableSelfReference(t *testing.T) {
 	client := entClient(t)
 	ctx := context.Background()

@@ -222,6 +222,301 @@ func TestGenerateRow_NilFieldTypeFailsNamedNotPanics(t *testing.T) {
 	}
 }
 
+// TestGenerateRow_NilRateLeavesNullableFieldsOutEntirely guards the core
+// null-rate mechanism: at rate 1.0, every Nullable field comes back nil
+// -- never reaching its matched rule at all -- while a non-Nullable field
+// on the same entity is untouched.
+func TestGenerateRow_NilRateLeavesNullableFieldsOutEntirely(t *testing.T) {
+	gen := inference.NewGenerator(
+		fixedRule{priority: 0, claims: "Bio", value: "should never be seen"},
+		fixedRule{priority: 0, claims: "Name", value: "always present"},
+	).WithNilRate(1)
+	entity := autoseed.Entity{
+		Name: "Widget",
+		Fields: []autoseed.Field{
+			{Name: "Bio", Type: reflect.TypeOf(""), Nullable: true},
+			{Name: "Name", Type: reflect.TypeOf(""), Nullable: false},
+		},
+	}
+
+	values, err := gen.GenerateRow(entity, autoseed.NewSeededSource(1))
+	if err != nil {
+		t.Fatalf("GenerateRow: %v", err)
+	}
+	if values["Bio"] != nil {
+		t.Fatalf("Bio = %v, want nil at nil rate 1.0", values["Bio"])
+	}
+	if values["Name"] != "always present" {
+		t.Fatalf("Name = %v, want %q: a non-Nullable field must never be left out", values["Name"], "always present")
+	}
+}
+
+// TestGenerateRow_ZeroNilRateNeverLeavesFieldsOut guards the default:
+// with no WithNilRate call (rate 0), a Nullable field always gets a
+// generated value, matching every pre-existing test's expectation.
+func TestGenerateRow_ZeroNilRateNeverLeavesFieldsOut(t *testing.T) {
+	gen := inference.NewGenerator(fixedRule{priority: 0, claims: "Bio", value: "present"})
+	entity := autoseed.Entity{
+		Name:   "Widget",
+		Fields: []autoseed.Field{{Name: "Bio", Type: reflect.TypeOf(""), Nullable: true}},
+	}
+
+	for seed := uint64(0); seed < 50; seed++ {
+		values, err := gen.GenerateRow(entity, autoseed.NewSeededSource(seed))
+		if err != nil {
+			t.Fatalf("seed %d: GenerateRow: %v", seed, err)
+		}
+		if values["Bio"] != "present" {
+			t.Fatalf("seed %d: Bio = %v, want %q at the default nil rate", seed, values["Bio"], "present")
+		}
+	}
+}
+
+// TestGenerateRow_NilRateNeverAppliesToSoftDeleteField guards that a
+// field the adapter flagged SoftDelete is excluded from the generic
+// null-rate roll: SoftDeleteRule already owns that field's own,
+// CreatedAt/UpdatedAt-coherent null-vs-not split, which a blind rate-1.0
+// roll would bypass entirely.
+func TestGenerateRow_NilRateNeverAppliesToSoftDeleteField(t *testing.T) {
+	gen := inference.NewGenerator(fixedRule{priority: 0, claims: "DeletedAt", value: "from the real rule"}).WithNilRate(1)
+	entity := autoseed.Entity{
+		Name: "Widget",
+		Fields: []autoseed.Field{
+			{Name: "DeletedAt", Type: reflect.TypeOf(""), Nullable: true, SoftDelete: true},
+		},
+	}
+
+	values, err := gen.GenerateRow(entity, autoseed.NewSeededSource(1))
+	if err != nil {
+		t.Fatalf("GenerateRow: %v", err)
+	}
+	if values["DeletedAt"] != "from the real rule" {
+		t.Fatalf("DeletedAt = %v, want the SoftDelete-aware rule's own value, not the generic nil-rate roll", values["DeletedAt"])
+	}
+}
+
+// TestGenerateRow_NilRateDeterministic guards that which rows land on nil
+// at a given nil rate is itself seed-derived and repeatable, the same
+// determinism guarantee every other draw in this pipeline carries.
+func TestGenerateRow_NilRateDeterministic(t *testing.T) {
+	gen := inference.NewGenerator(fixedRule{priority: 0, claims: "Bio", value: "present"}).WithNilRate(0.5)
+	entity := autoseed.Entity{
+		Name:   "Widget",
+		Fields: []autoseed.Field{{Name: "Bio", Type: reflect.TypeOf(""), Nullable: true}},
+	}
+	root := autoseed.NewSeededSource(7)
+
+	build := func() []bool {
+		results := make([]bool, 100)
+		for i := range results {
+			values, err := gen.GenerateRow(entity, root.Entity("Widget").Row(i))
+			if err != nil {
+				t.Fatalf("row %d: GenerateRow: %v", i, err)
+			}
+			results[i] = values["Bio"] == nil
+		}
+		return results
+	}
+
+	first := build()
+	sawNil, sawValue := false, false
+	for _, isNil := range first {
+		if isNil {
+			sawNil = true
+		} else {
+			sawValue = true
+		}
+	}
+	if !sawNil || !sawValue {
+		t.Fatalf("100 rows at nil rate 0.5 produced no mix of nil/non-nil, want both: %v", first)
+	}
+
+	for i := 0; i < 20; i++ {
+		if got := build(); !equalBoolSlices(got, first) {
+			t.Fatalf("run %d: nil pattern differs from the first run", i)
+		}
+	}
+}
+
+// TestGenerateRow_NilRateApproximatesConfiguredRate guards actual
+// proportionality, not just "some mix of nil and non-nil": a roll that
+// ignored the configured rate value entirely (an on/off switch, or a
+// fixed ~50/50 split regardless of rate) would still pass a weaker
+// "both values appeared" check. Mirrors the band-check style
+// softdelete_test.go already uses for its own 90/10 split.
+func TestGenerateRow_NilRateApproximatesConfiguredRate(t *testing.T) {
+	entity := autoseed.Entity{
+		Name:   "Widget",
+		Fields: []autoseed.Field{{Name: "Bio", Type: reflect.TypeOf(""), Nullable: true}},
+	}
+	const rows = 1000
+
+	for _, rate := range []float64{0.1, 0.5, 0.9} {
+		gen := inference.NewGenerator(fixedRule{priority: 0, claims: "Bio", value: "present"}).WithNilRate(rate)
+		root := autoseed.NewSeededSource(7)
+
+		nilCount := 0
+		for i := 0; i < rows; i++ {
+			values, err := gen.GenerateRow(entity, root.Entity("Widget").Row(i))
+			if err != nil {
+				t.Fatalf("rate %v row %d: GenerateRow: %v", rate, i, err)
+			}
+			if values["Bio"] == nil {
+				nilCount++
+			}
+		}
+
+		got := float64(nilCount) / rows
+		if got < rate-0.1 || got > rate+0.1 {
+			t.Fatalf("rate %v: observed nil fraction %.3f over %d rows, want within 0.1 of the configured rate", rate, got, rows)
+		}
+	}
+}
+
+// TestGenerateRow_NilRateNeverAppliesToForeignKeyField guards that the
+// pre-existing skip[] guard (foreign key columns are never generated —
+// persistence copies them from the parent) still wins over a Nullable
+// field also being a foreign key: gormseed can mark a pointer-typed FK
+// column Nullable, so this combination is real, not hypothetical.
+func TestGenerateRow_NilRateNeverAppliesToForeignKeyField(t *testing.T) {
+	gen := inference.NewGenerator().WithNilRate(1)
+	entity := autoseed.Entity{
+		Name: "Widget",
+		Fields: []autoseed.Field{
+			{Name: "OwnerID", Type: reflect.TypeOf(0), Nullable: true},
+		},
+		References: []autoseed.Reference{
+			{Fields: []string{"OwnerID"}, Target: "Owner", Nullable: true},
+		},
+	}
+
+	values, err := gen.GenerateRow(entity, autoseed.NewSeededSource(1))
+	if err != nil {
+		t.Fatalf("GenerateRow: %v", err)
+	}
+	if _, present := values["OwnerID"]; present {
+		t.Fatalf("OwnerID = %v, want absent from the row entirely: a foreign key is never generated, regardless of Nullable or nil rate", values["OwnerID"])
+	}
+}
+
+// coinFlipRule mimics SoftDeleteRule's own idiom (seed.Rand() first,
+// then a Float64() threshold) to prove the null-rate pre-pass's roll
+// doesn't entangle a surviving field's own randomness with the roll that
+// decided it would survive.
+type coinFlipRule struct{ claims string }
+
+func (r coinFlipRule) Priority() int { return 0 }
+
+func (r coinFlipRule) CanInfer(field autoseed.Field) bool { return field.Name == r.claims }
+
+func (r coinFlipRule) Infer(_ autoseed.Field, seed *autoseed.SeededSource, _ map[string]any) any {
+	return seed.Rand().Float64() < 0.5
+}
+
+// TestGenerateRow_NilRateDoesNotEntangleSurvivingFieldsOwnRandomness
+// guards a real bug found in review: the null-rate pre-pass used to roll
+// its decision from the exact same SeededSource node
+// (seed.Field(field.Name)) a surviving field's own rule then received
+// unchanged. Since SeededSource derivation is pure (no advancing state),
+// a rule using the same seed.Rand()-first idiom SoftDeleteRule does got
+// the identical draw the pre-pass already consumed — deterministically
+// entangling the rule's own decision with the roll that decided it
+// would survive, up to fully collapsing a 50/50 rule to one constant
+// outcome. At nil rate 0.9, only rows whose roll lands in [0.9, 1.0)
+// survive; if the entanglement were still present, every surviving
+// row's coinFlipRule result would come out identical (Float64() on the
+// exact same derived seed the pre-pass just tested against 0.9 can
+// never itself land below 0.5). With the fix, both outcomes must appear.
+func TestGenerateRow_NilRateDoesNotEntangleSurvivingFieldsOwnRandomness(t *testing.T) {
+	gen := inference.NewGenerator(coinFlipRule{claims: "Flag"}).WithNilRate(0.9)
+	entity := autoseed.Entity{
+		Name:   "Widget",
+		Fields: []autoseed.Field{{Name: "Flag", Type: reflect.TypeOf(false), Nullable: true}},
+	}
+	root := autoseed.NewSeededSource(11)
+
+	sawTrue, sawFalse := false, false
+	for i := 0; i < 500; i++ {
+		values, err := gen.GenerateRow(entity, root.Entity("Widget").Row(i))
+		if err != nil {
+			t.Fatalf("row %d: GenerateRow: %v", i, err)
+		}
+		result, ok := values["Flag"].(bool)
+		if !ok {
+			continue // this row was nulled by the pre-pass, not relevant here
+		}
+		if result {
+			sawTrue = true
+		} else {
+			sawFalse = true
+		}
+	}
+	if !sawTrue || !sawFalse {
+		t.Fatal("every surviving row's own 50/50 rule collapsed to a single outcome, want a genuine mix: the null-rate roll and the rule's own randomness must be independent")
+	}
+}
+
+// TestGenerateRow_NilRateDoesNotBiasSurvivingNumericValues guards the
+// distributional half of the same bug: a rule that builds its value
+// directly from the field's own seed (as PriceRule and genericNumberRule
+// do via faker(seed)) used to have that value mathematically constrained
+// to the top (1-nilRate) fraction of its range, since surviving required
+// the identical draw to land above the nil-rate threshold. At nil rate
+// 0.5, a value below the midpoint of the rule's declared range must
+// still be reachable among surviving rows.
+func TestGenerateRow_NilRateDoesNotBiasSurvivingNumericValues(t *testing.T) {
+	gen := inference.NewGenerator(fixedFloatRule{claims: "Weight"}).WithNilRate(0.5)
+	entity := autoseed.Entity{
+		Name:   "Widget",
+		Fields: []autoseed.Field{{Name: "Weight", Type: reflect.TypeOf(float64(0)), Nullable: true}},
+	}
+	root := autoseed.NewSeededSource(3)
+
+	sawBelowMidpoint := false
+	for i := 0; i < 500; i++ {
+		values, err := gen.GenerateRow(entity, root.Entity("Widget").Row(i))
+		if err != nil {
+			t.Fatalf("row %d: GenerateRow: %v", i, err)
+		}
+		value, ok := values["Weight"].(float64)
+		if !ok {
+			continue
+		}
+		if value < 500 {
+			sawBelowMidpoint = true
+			break
+		}
+	}
+	if !sawBelowMidpoint {
+		t.Fatal("no surviving row's Weight fell below the midpoint of its [0,1000) range, want the null-rate roll independent of the rule's own value")
+	}
+}
+
+// fixedFloatRule mimics a numeric rule (PriceRule, genericNumberRule)
+// that draws its value straight from the field's own seed, the shape
+// that exposed the seed-entanglement bug.
+type fixedFloatRule struct{ claims string }
+
+func (r fixedFloatRule) Priority() int { return 0 }
+
+func (r fixedFloatRule) CanInfer(field autoseed.Field) bool { return field.Name == r.claims }
+
+func (r fixedFloatRule) Infer(_ autoseed.Field, seed *autoseed.SeededSource, _ map[string]any) any {
+	return seed.Rand().Float64() * 1000
+}
+
+func equalBoolSlices(a, b []bool) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
 func TestDefaultGenerator_DifferentRowsAndEntitiesDiverge(t *testing.T) {
 	entity := autoseed.Entity{
 		Name:   "Widget",

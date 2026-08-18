@@ -56,6 +56,26 @@ func (_u *OrderUpdate) SetNillableCity(v *string) *OrderUpdate {
 	return _u
 }
 
+// SetNotes sets the "notes" field.
+func (_u *OrderUpdate) SetNotes(v string) *OrderUpdate {
+	_u.mutation.SetNotes(v)
+	return _u
+}
+
+// SetNillableNotes sets the "notes" field if the given value is not nil.
+func (_u *OrderUpdate) SetNillableNotes(v *string) *OrderUpdate {
+	if v != nil {
+		_u.SetNotes(*v)
+	}
+	return _u
+}
+
+// ClearNotes clears the value of the "notes" field.
+func (_u *OrderUpdate) ClearNotes() *OrderUpdate {
+	_u.mutation.ClearNotes()
+	return _u
+}
+
 // SetCustomerID sets the "customer" edge to the Customer entity by ID.
 func (_u *OrderUpdate) SetCustomerID(id int) *OrderUpdate {
 	_u.mutation.SetCustomerID(id)
@@ -131,6 +151,12 @@ func (_u *OrderUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.City(); ok {
 		_spec.SetField(order.FieldCity, field.TypeString, value)
 	}
+	if value, ok := _u.mutation.Notes(); ok {
+		_spec.SetField(order.FieldNotes, field.TypeString, value)
+	}
+	if _u.mutation.NotesCleared() {
+		_spec.ClearField(order.FieldNotes, field.TypeString)
+	}
 	if _u.mutation.CustomerCleared() {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.M2O,
@@ -205,6 +231,26 @@ func (_u *OrderUpdateOne) SetNillableCity(v *string) *OrderUpdateOne {
 	if v != nil {
 		_u.SetCity(*v)
 	}
+	return _u
+}
+
+// SetNotes sets the "notes" field.
+func (_u *OrderUpdateOne) SetNotes(v string) *OrderUpdateOne {
+	_u.mutation.SetNotes(v)
+	return _u
+}
+
+// SetNillableNotes sets the "notes" field if the given value is not nil.
+func (_u *OrderUpdateOne) SetNillableNotes(v *string) *OrderUpdateOne {
+	if v != nil {
+		_u.SetNotes(*v)
+	}
+	return _u
+}
+
+// ClearNotes clears the value of the "notes" field.
+func (_u *OrderUpdateOne) ClearNotes() *OrderUpdateOne {
+	_u.mutation.ClearNotes()
 	return _u
 }
 
@@ -312,6 +358,12 @@ func (_u *OrderUpdateOne) sqlSave(ctx context.Context) (_node *Order, err error)
 	}
 	if value, ok := _u.mutation.City(); ok {
 		_spec.SetField(order.FieldCity, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.Notes(); ok {
+		_spec.SetField(order.FieldNotes, field.TypeString, value)
+	}
+	if _u.mutation.NotesCleared() {
+		_spec.ClearField(order.FieldNotes, field.TypeString)
 	}
 	if _u.mutation.CustomerCleared() {
 		edge := &sqlgraph.EdgeSpec{

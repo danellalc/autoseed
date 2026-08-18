@@ -10,9 +10,9 @@ From the author of [EFCore.AutoSeed](https://github.com/danellalc/EFCore.AutoSee
 
 In development. This README describes the full design being built — see the [roadmap](ARCHITECTURE.md#roadmap) for what ships when.
 
-**Works today:** reading a GORM model, `gormseed.Explain`, and `gormseed.Seed` — real inserts, in dependency order, with long-tail cardinality, unique-field dedup, and deferred second-pass cycles, tested against real PostgreSQL and MySQL.
+**Works today:** reading a GORM or ent model, `Explain`, and `Seed` on both adapters — real inserts, in dependency order, with long-tail cardinality, single-column and composite unique-field dedup, a cardinality cap that covers a ternary/N-ary "attributed join" as well as the pairwise case, deferred second-pass cycles, and `WithNilRate` for leaving a Nullable field genuinely NULL at a configurable rate — tested against real PostgreSQL and MySQL.
 
-**Not built yet:** `gormseed.SeedCoverage`, `WithLocale`, `WithNilRate`, and every value-realism knob beyond the ~16 built-in inference rules (dirty data, weekday/business-hour clustering, per-column null rate). Code blocks below that use them are the design, marked as such inline.
+**Not built yet:** `gormseed.SeedCoverage`, `WithLocale`, and every value-realism knob beyond the ~16 built-in inference rules (dirty data, weekday/business-hour clustering). Code blocks below that use them are the design, marked as such inline.
 
 ## The problem
 
@@ -106,10 +106,10 @@ The core is ORM-agnostic. Each ORM gets an adapter that reads its model:
 | Adapter | Reads | Status |
 |---|---|---|
 | `autoseed/gormseed` | GORM struct tags via `schema.Parse` | **v1** |
-| `autoseed/entseed` | ent's generated graph (`gen.Graph`) | v2 |
+| `autoseed/entseed` | ent's schema, via `entc.LoadGraph` | **v1** |
 | sqlc, Bun | — | roadmap, on demand |
 
-GORM first because it is where most Go codebases are. ent second because its schema **is** a graph — nodes and edges are exposed by codegen, which makes it the technically sweetest target.
+GORM first because it is where most Go codebases are. ent second because its schema **is** a graph — nodes and edges are exposed by codegen, which made it the technically sweetest target once GORM proved the core contract out. ent has no runtime introspection the way GORM's `schema.Parse` does — `entseed` reads the schema source itself through `entc.LoadGraph`, the same mechanism `entc` uses during `go generate`, and has no composite primary keys, so a ternary or N-ary "attributed join" is expressed there as a surrogate ID plus a composite `UniqueConstraints` entry instead of a composite key.
 
 ## What it does not do
 
@@ -123,7 +123,9 @@ GORM first because it is where most Go codebases are. ent second because its sch
 
 A property-based test asserts that for **any** model and **any** mix of nullable/required references, the engine either names an unsatisfiable cycle or produces an order that respects every foreign key; it runs on every commit against the graph and cycle engine directly, no database needed. A second layer of property tests runs `gormseed.Seed` itself, seed and scale rapid-varied, against a real containerized PostgreSQL and checks every row for orphaned foreign keys and primary key collisions — a linear chain, a diamond of two required principals merging into one dependent, a nullable self-reference, a composite-primary-key junction, a shared-primary-key one-to-one, and a self-referencing many-to-many (a "follows" table, where two foreign keys target the same entity and only their own columns tell them apart).
 
-`gormseed.Seed` is tested against real, containerized PostgreSQL — never SQLite-only — covering a required-FK chain with long-tail cardinality, a nullable self-reference, a required/nullable two-entity cycle resolved in a second pass, and a many-to-many join table. A combined "MegaMart" model exercises every one of those shapes together in a single seed run — self-reference, embedded struct, composite and shared primary keys, unique columns, soft-delete bias, a many-to-many join and a correlated derived value — the way a real application model mixes them. MySQL gets its own real-container test for the required-FK path and its `LastInsertId` batch arithmetic, not yet the same depth. Against real, public schemas is still ahead of launch.
+`gormseed.Seed` is tested against real, containerized PostgreSQL — never SQLite-only — covering a required-FK chain with long-tail cardinality, a nullable self-reference, a required/nullable two-entity cycle resolved in a second pass, a many-to-many join table, a single-column and a composite unique constraint, a ternary (three-participant) attributed join, and `WithNilRate` producing real NULLs for both `database/sql` wrapper and pointer-typed fields without ever touching a plain field the database happens to allow NULL on but Go cannot represent absence for. A combined "MegaMart" model exercises every one of the core shapes together in a single seed run — self-reference, embedded struct, composite and shared primary keys, unique columns, soft-delete bias, a many-to-many join and a correlated derived value — the way a real application model mixes them. MySQL gets its own real-container test for the required-FK path and its `LastInsertId` batch arithmetic, not yet the same depth.
+
+`entseed.Seed` and `entseed.Explain` get the same real-Postgres treatment on their own real ent schemas: a required chain, a nullable self-reference, a many-to-many edge reported as a named skip (not silently dropped), a composite unique index over plain fields and over edge-owned foreign keys, a ternary junction expressed via `UniqueConstraints`, and `WithNilRate` clearing an `Optional` field through ent's own `ClearField` mechanism. Against real, public schemas is still ahead of launch.
 
 ## Compared to
 

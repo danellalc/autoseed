@@ -112,6 +112,7 @@ var (
 		{Name: "id", Type: field.TypeInt, Increment: true},
 		{Name: "street", Type: field.TypeString},
 		{Name: "city", Type: field.TypeString},
+		{Name: "notes", Type: field.TypeString, Nullable: true},
 		{Name: "customer_orders", Type: field.TypeInt},
 	}
 	// OrdersTable holds the schema information for the "orders" table.
@@ -122,7 +123,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "orders_customers_orders",
-				Columns:    []*schema.Column{OrdersColumns[3]},
+				Columns:    []*schema.Column{OrdersColumns[4]},
 				RefColumns: []*schema.Column{CustomersColumns[0]},
 				OnDelete:   schema.NoAction,
 			},

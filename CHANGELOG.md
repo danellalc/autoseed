@@ -10,6 +10,63 @@ change, even if the public API itself is unchanged.
 
 ## [Unreleased]
 
+### Added
+
+- `entseed`, the ent adapter: `entseed.Explain` and `entseed.Seed`, reading a
+  schema via `entc.LoadGraph` (ent exposes its resolved graph only through
+  the same mechanism `entc` itself uses during `go generate`, not runtime
+  introspection the way GORM's `schema.Parse` works on a live `*gorm.DB`) —
+  real inserts against real PostgreSQL, tested end to end: a required chain,
+  a nullable self-reference, a many-to-many edge reported once as a named
+  skip in the `Explain` report rather than silently dropped (ent has no
+  addressable join-table entity for one, unlike GORM's auto-generated join
+  struct), a composite unique index over plain fields and over edge-owned
+  foreign keys, and a ternary attributed join expressed as a surrogate ID
+  plus a composite `UniqueConstraints` entry, since ent has no composite
+  primary keys. `entseed.Seed` returns `entseed.ErrNilClient` for a nil
+  client rather than panicking.
+- Composite unique constraints, on both adapters: `Entity.UniqueConstraints`
+  holds a field-name tuple per composite index (GORM's `uniqueIndex` tag;
+  ent's `index.Fields`/`index.Edges`). `EnsureUnique` dedups a tuple with at
+  least one independent, non-foreign-key string column by rewriting its last
+  such field on collision; two constraints sharing a rewritable field are
+  resolved together in one pass per row, not independently, so fixing one
+  can never silently reopen a duplicate under the other. A constraint
+  naming only foreign key columns is left to the generation plan's
+  cardinality cap instead, described next.
+- The junction cardinality cap generalizes from exactly one non-driver
+  participant to any number: a composite key — the entity's own primary
+  key, or now also a `UniqueConstraints` entry spanning foreign keys —
+  covered by a driver reference plus N other required references caps each
+  driver row's child count at the product of those references' own row
+  counts, not just a single factor. `autoseed.JunctionIndices`, shared by
+  both adapters instead of duplicated, maps a block-local position to a
+  distinct per-participant row index via mixed-radix decomposition; the
+  original pairwise shape (a many-to-many join table, an "attributed join"
+  entity) is the one-participant case of the same mechanism, so it keeps
+  working unchanged.
+- `autoseed.WithNilRate(rate)`: the per-row probability a `Nullable` field's
+  value is left out entirely, producing a real database NULL, instead of
+  always generating one. `Field.Nullable` now means "generation can
+  actually leave this out and have persistence turn it into a real NULL,"
+  not just "the column's schema allows NULL" — gormseed only sets it true
+  for a pointer field or a `database/sql` nullable wrapper, since
+  `Field.Set(ctx, instance, nil)` silently writes a plain field's zero
+  value, not a real NULL, for anything else; ent's generic `ClearField`
+  mutation method works uniformly for any `Optional()` field regardless of
+  Go representation, so entseed needed no such gate. A field also flagged
+  `SoftDelete` is excluded from this generic roll, since `SoftDeleteRule`
+  already owns that field's own, more deliberate null-vs-not split. The
+  roll is derived from a seed position distinct from whatever randomness a
+  surviving field's own rule draws, so surviving a rate below 1.0 never
+  biases that rule's own output toward a particular range.
+- Fixed a pre-existing entseed bug this work surfaced: `createRows` set a
+  mutation field by its declared ent name, but ent's generated `SetField`
+  matches on the field's storage key, which only happened to be textually
+  identical to the name in every schema used before a fixture added an
+  explicit `StorageKey` override. `Seed` now translates through each
+  entity's own name-to-storage-key map before calling `SetField`.
+
 ## [0.1.0]
 
 First tagged release. Reads a GORM model and writes referentially valid,

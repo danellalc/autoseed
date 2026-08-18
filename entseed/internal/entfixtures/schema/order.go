@@ -16,6 +16,7 @@ func (Order) Fields() []ent.Field {
 	return []ent.Field{
 		field.String("street"),
 		field.String("city"),
+		field.String("notes").Optional(),
 	}
 }
 

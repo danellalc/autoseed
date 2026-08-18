@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/danellalc/autoseed"
+	"github.com/danellalc/autoseed/inference"
 	"gorm.io/gorm"
 	"gorm.io/gorm/schema"
 )
@@ -298,7 +299,7 @@ func fieldFrom(f *schema.Field) autoseed.Field {
 		Name:          f.Name,
 		Type:          f.IndirectFieldType,
 		Size:          f.Size,
-		Nullable:      !f.PrimaryKey && !f.NotNull,
+		Nullable:      !f.PrimaryKey && !f.NotNull && canRepresentNull(f.FieldType),
 		Unique:        f.Unique,
 		PrimaryKey:    f.PrimaryKey,
 		AutoIncrement: f.AutoIncrement,
@@ -310,4 +311,14 @@ func isSoftDelete(f *schema.Field) bool {
 	value := reflect.New(f.FieldType).Interface()
 	_, ok := value.(schema.QueryClausesInterface)
 	return ok
+}
+
+// canRepresentNull reports whether t, the field's own (non-indirected) Go
+// type, can actually hold a nil value: a pointer, or one of database/sql's
+// nullable wrapper types. A plain, non-pointer field GORM's own Field.Set
+// silently turns a nil write into that type's zero value, not a real SQL
+// NULL, so it must not be marked Nullable regardless of whether the
+// column's schema allows NULL.
+func canRepresentNull(t reflect.Type) bool {
+	return t.Kind() == reflect.Pointer || inference.IsNullableWrapper(t)
 }

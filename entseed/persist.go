@@ -73,7 +73,7 @@ func Seed(ctx context.Context, client any, schemaPath string, opts ...autoseed.O
 		deferredByEntity[d.Entity] = append(deferredByEntity[d.Entity], d)
 	}
 
-	generator := inference.NewDefaultGenerator()
+	generator := inference.NewDefaultGenerator().WithNilRate(options.NilRate)
 	inserted := make(map[string]*insertedEntity, len(entities))
 
 	for _, name := range resolved.Order {
@@ -159,7 +159,17 @@ func createRows(
 		}
 
 		for fieldName, value := range values {
-			if err := mutation.SetField(storageKeys[fieldName], value); err != nil {
+			key := storageKeys[fieldName]
+			if value == nil {
+				// mutation.SetField would panic trying to type-assert a nil
+				// interface into the field's concrete type -- ent's own
+				// generic way to leave an Optional field unset is ClearField.
+				if err := mutation.ClearField(key); err != nil {
+					return nil, fmt.Errorf("clearing %s.%s: %w", entity.Name, fieldName, err)
+				}
+				continue
+			}
+			if err := mutation.SetField(key, value); err != nil {
 				return nil, fmt.Errorf("setting %s.%s: %w", entity.Name, fieldName, err)
 			}
 		}

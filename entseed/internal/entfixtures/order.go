@@ -21,6 +21,8 @@ type Order struct {
 	Street string `json:"street,omitempty"`
 	// City holds the value of the "city" field.
 	City string `json:"city,omitempty"`
+	// Notes holds the value of the "notes" field.
+	Notes string `json:"notes,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the OrderQuery when eager-loading is set.
 	Edges           OrderEdges `json:"edges"`
@@ -55,7 +57,7 @@ func (*Order) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case order.FieldID:
 			values[i] = new(sql.NullInt64)
-		case order.FieldStreet, order.FieldCity:
+		case order.FieldStreet, order.FieldCity, order.FieldNotes:
 			values[i] = new(sql.NullString)
 		case order.ForeignKeys[0]: // customer_orders
 			values[i] = new(sql.NullInt64)
@@ -91,6 +93,12 @@ func (_m *Order) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field city", values[i])
 			} else if value.Valid {
 				_m.City = value.String
+			}
+		case order.FieldNotes:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field notes", values[i])
+			} else if value.Valid {
+				_m.Notes = value.String
 			}
 		case order.ForeignKeys[0]:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
@@ -145,6 +153,9 @@ func (_m *Order) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("city=")
 	builder.WriteString(_m.City)
+	builder.WriteString(", ")
+	builder.WriteString("notes=")
+	builder.WriteString(_m.Notes)
 	builder.WriteByte(')')
 	return builder.String()
 }

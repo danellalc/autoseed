@@ -22,7 +22,11 @@ var nullableWrapperTypes = map[reflect.Type]bool{
 	reflect.TypeOf(sql.NullTime{}):    true,
 }
 
-func isNullableWrapper(t reflect.Type) bool {
+// IsNullableWrapper reports whether t is one of the database/sql
+// "nullable primitive" wrapper types — the Go-level signal an adapter can
+// use to mark a Field Nullable, since these types (unlike a plain string
+// or int) can actually represent a real database NULL.
+func IsNullableWrapper(t reflect.Type) bool {
 	return t != nil && nullableWrapperTypes[t]
 }
 

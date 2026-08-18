@@ -20,7 +20,14 @@ type Entity struct {
 
 // Field describes one column-backed value on an Entity. Type is the Go
 // type value generation must produce; Size is the column's maximum length
-// for a string type, zero when the column has no declared limit.
+// for a string type, zero when the column has no declared limit. Nullable
+// reports whether generation may leave this field's value out entirely
+// and have persistence turn that into a real database NULL — not merely
+// whether the underlying column's schema allows NULL. A column that
+// allows NULL but whose Go representation has no way to express absence
+// (a plain, non-pointer field with no database/sql Null* wrapper) is
+// Nullable=false: generation would have nothing meaningful to leave out,
+// only its own zero value.
 type Field struct {
 	Name          string
 	Type          reflect.Type

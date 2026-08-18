@@ -218,7 +218,9 @@ func constraintContainsField(constraint []string, field string) bool {
 // constraintKey builds a comparable key for row's values across
 // constraint, substituting overrideValue for overrideField when
 // overrideField is non-empty — used to probe a candidate rewrite without
-// mutating row before it is accepted.
+// mutating row before it is accepted. A nil value (a Nullable field left
+// out by null-rate) makes the whole tuple non-comparable, the same way
+// SQL's own NULL never equals another NULL under a unique constraint.
 func constraintKey(row map[string]any, constraint []string, overrideField string, overrideValue any) (string, bool) {
 	parts := make([]string, len(constraint))
 	for i, name := range constraint {
@@ -226,7 +228,7 @@ func constraintKey(row map[string]any, constraint []string, overrideField string
 		if overrideField != "" && name == overrideField {
 			value, ok = overrideValue, true
 		}
-		if !ok {
+		if !ok || value == nil {
 			return "", false
 		}
 		parts[i] = fmt.Sprintf("%v", value)

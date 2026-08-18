@@ -32,6 +32,20 @@ func (_c *OrderCreate) SetCity(v string) *OrderCreate {
 	return _c
 }
 
+// SetNotes sets the "notes" field.
+func (_c *OrderCreate) SetNotes(v string) *OrderCreate {
+	_c.mutation.SetNotes(v)
+	return _c
+}
+
+// SetNillableNotes sets the "notes" field if the given value is not nil.
+func (_c *OrderCreate) SetNillableNotes(v *string) *OrderCreate {
+	if v != nil {
+		_c.SetNotes(*v)
+	}
+	return _c
+}
+
 // SetCustomerID sets the "customer" edge to the Customer entity by ID.
 func (_c *OrderCreate) SetCustomerID(id int) *OrderCreate {
 	_c.mutation.SetCustomerID(id)
@@ -119,6 +133,10 @@ func (_c *OrderCreate) createSpec() (*Order, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.City(); ok {
 		_spec.SetField(order.FieldCity, field.TypeString, value)
 		_node.City = value
+	}
+	if value, ok := _c.mutation.Notes(); ok {
+		_spec.SetField(order.FieldNotes, field.TypeString, value)
+		_node.Notes = value
 	}
 	if nodes := _c.mutation.CustomerIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{

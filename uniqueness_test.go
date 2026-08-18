@@ -203,6 +203,72 @@ func TestEnsureUnique_CompositeConstraintRewritesLastField(t *testing.T) {
 	}
 }
 
+// TestEnsureUnique_CompositeConstraintNilFieldNeverCollides guards
+// constraintKey's nil handling: a Nullable field null-rate left out of
+// two different rows must never make EnsureUnique treat their tuples as
+// colliding, the same way two real SQL NULLs are never equal to each
+// other under a unique constraint. Before this guard, two rows both
+// holding nil for LastName would have produced the identical key
+// "Ana\x1f<nil>" and been flagged as a duplicate — then failed outright,
+// since a nil LastName also fails the rewrite target's own string type
+// assertion.
+func TestEnsureUnique_CompositeConstraintNilFieldNeverCollides(t *testing.T) {
+	entity := autoseed.Entity{
+		Name: "Employee",
+		Fields: []autoseed.Field{
+			stringField("FirstName", false, 0),
+			stringField("LastName", false, 0),
+		},
+		UniqueConstraints: [][]string{{"FirstName", "LastName"}},
+	}
+	rows := []map[string]any{
+		{"FirstName": "Ana", "LastName": nil},
+		{"FirstName": "Ana", "LastName": nil},
+	}
+
+	if err := autoseed.EnsureUnique(entity, rows, autoseed.NewSeededSource(1)); err != nil {
+		t.Fatalf("EnsureUnique: %v", err)
+	}
+	if rows[0]["LastName"] != nil || rows[1]["LastName"] != nil {
+		t.Fatalf("a row with a nil constraint field must never be rewritten, got %v", rows)
+	}
+}
+
+// TestEnsureUnique_CompositeConstraintNilRowsDoNotMaskRealDuplicates
+// guards that the nil-tuple exemption doesn't disable real-collision
+// detection for the OTHER rows sharing the same constraint: a batch
+// mixing nil-LastName rows with a genuine (Ana, Silva) duplicate must
+// still dedup the real duplicate while leaving the nil rows alone.
+func TestEnsureUnique_CompositeConstraintNilRowsDoNotMaskRealDuplicates(t *testing.T) {
+	entity := autoseed.Entity{
+		Name: "Employee",
+		Fields: []autoseed.Field{
+			stringField("FirstName", false, 0),
+			stringField("LastName", false, 0),
+		},
+		UniqueConstraints: [][]string{{"FirstName", "LastName"}},
+	}
+	rows := []map[string]any{
+		{"FirstName": "Ana", "LastName": nil},
+		{"FirstName": "Ana", "LastName": "Silva"},
+		{"FirstName": "Ana", "LastName": nil},
+		{"FirstName": "Ana", "LastName": "Silva"},
+	}
+
+	if err := autoseed.EnsureUnique(entity, rows, autoseed.NewSeededSource(1)); err != nil {
+		t.Fatalf("EnsureUnique: %v", err)
+	}
+	if rows[0]["LastName"] != nil || rows[2]["LastName"] != nil {
+		t.Fatalf("nil rows must never be rewritten, got %v", rows)
+	}
+	if rows[1]["LastName"] != "Silva" {
+		t.Fatalf("the first real occurrence must keep its value, got %v", rows[1])
+	}
+	if rows[3]["LastName"] == "Silva" {
+		t.Fatalf("the real duplicate (Ana, Silva) must still be rewritten, got %v", rows[3])
+	}
+}
+
 func TestEnsureUnique_CompositeConstraintSpanningReferenceFieldUntouched(t *testing.T) {
 	entity := autoseed.Entity{
 		Name: "Enrollment",

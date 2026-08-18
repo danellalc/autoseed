@@ -63,6 +63,11 @@ func City(v string) predicate.Order {
 	return predicate.Order(sql.FieldEQ(FieldCity, v))
 }
 
+// Notes applies equality check predicate on the "notes" field. It's identical to NotesEQ.
+func Notes(v string) predicate.Order {
+	return predicate.Order(sql.FieldEQ(FieldNotes, v))
+}
+
 // StreetEQ applies the EQ predicate on the "street" field.
 func StreetEQ(v string) predicate.Order {
 	return predicate.Order(sql.FieldEQ(FieldStreet, v))
@@ -191,6 +196,81 @@ func CityEqualFold(v string) predicate.Order {
 // CityContainsFold applies the ContainsFold predicate on the "city" field.
 func CityContainsFold(v string) predicate.Order {
 	return predicate.Order(sql.FieldContainsFold(FieldCity, v))
+}
+
+// NotesEQ applies the EQ predicate on the "notes" field.
+func NotesEQ(v string) predicate.Order {
+	return predicate.Order(sql.FieldEQ(FieldNotes, v))
+}
+
+// NotesNEQ applies the NEQ predicate on the "notes" field.
+func NotesNEQ(v string) predicate.Order {
+	return predicate.Order(sql.FieldNEQ(FieldNotes, v))
+}
+
+// NotesIn applies the In predicate on the "notes" field.
+func NotesIn(vs ...string) predicate.Order {
+	return predicate.Order(sql.FieldIn(FieldNotes, vs...))
+}
+
+// NotesNotIn applies the NotIn predicate on the "notes" field.
+func NotesNotIn(vs ...string) predicate.Order {
+	return predicate.Order(sql.FieldNotIn(FieldNotes, vs...))
+}
+
+// NotesGT applies the GT predicate on the "notes" field.
+func NotesGT(v string) predicate.Order {
+	return predicate.Order(sql.FieldGT(FieldNotes, v))
+}
+
+// NotesGTE applies the GTE predicate on the "notes" field.
+func NotesGTE(v string) predicate.Order {
+	return predicate.Order(sql.FieldGTE(FieldNotes, v))
+}
+
+// NotesLT applies the LT predicate on the "notes" field.
+func NotesLT(v string) predicate.Order {
+	return predicate.Order(sql.FieldLT(FieldNotes, v))
+}
+
+// NotesLTE applies the LTE predicate on the "notes" field.
+func NotesLTE(v string) predicate.Order {
+	return predicate.Order(sql.FieldLTE(FieldNotes, v))
+}
+
+// NotesContains applies the Contains predicate on the "notes" field.
+func NotesContains(v string) predicate.Order {
+	return predicate.Order(sql.FieldContains(FieldNotes, v))
+}
+
+// NotesHasPrefix applies the HasPrefix predicate on the "notes" field.
+func NotesHasPrefix(v string) predicate.Order {
+	return predicate.Order(sql.FieldHasPrefix(FieldNotes, v))
+}
+
+// NotesHasSuffix applies the HasSuffix predicate on the "notes" field.
+func NotesHasSuffix(v string) predicate.Order {
+	return predicate.Order(sql.FieldHasSuffix(FieldNotes, v))
+}
+
+// NotesIsNil applies the IsNil predicate on the "notes" field.
+func NotesIsNil() predicate.Order {
+	return predicate.Order(sql.FieldIsNull(FieldNotes))
+}
+
+// NotesNotNil applies the NotNil predicate on the "notes" field.
+func NotesNotNil() predicate.Order {
+	return predicate.Order(sql.FieldNotNull(FieldNotes))
+}
+
+// NotesEqualFold applies the EqualFold predicate on the "notes" field.
+func NotesEqualFold(v string) predicate.Order {
+	return predicate.Order(sql.FieldEqualFold(FieldNotes, v))
+}
+
+// NotesContainsFold applies the ContainsFold predicate on the "notes" field.
+func NotesContainsFold(v string) predicate.Order {
+	return predicate.Order(sql.FieldContainsFold(FieldNotes, v))
 }
 
 // HasCustomer applies the HasEdge predicate on the "customer" edge.
