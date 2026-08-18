@@ -17,10 +17,13 @@ func TestNewOptions_Defaults(t *testing.T) {
 	if options.NilRate != 0 {
 		t.Fatalf("NilRate = %v, want 0", options.NilRate)
 	}
+	if options.Locale != "" {
+		t.Fatalf("Locale = %q, want empty", options.Locale)
+	}
 }
 
 func TestNewOptions_AppliesGivenOptions(t *testing.T) {
-	options := autoseed.NewOptions(autoseed.WithSeed(42), autoseed.WithScale(1_000), autoseed.WithNilRate(0.25))
+	options := autoseed.NewOptions(autoseed.WithSeed(42), autoseed.WithScale(1_000), autoseed.WithNilRate(0.25), autoseed.WithLocale("pt_BR"))
 	if options.Seed != 42 {
 		t.Fatalf("Seed = %d, want 42", options.Seed)
 	}
@@ -29,6 +32,9 @@ func TestNewOptions_AppliesGivenOptions(t *testing.T) {
 	}
 	if options.NilRate != 0.25 {
 		t.Fatalf("NilRate = %v, want 0.25", options.NilRate)
+	}
+	if options.Locale != "pt_BR" {
+		t.Fatalf("Locale = %q, want pt_BR", options.Locale)
 	}
 }
 

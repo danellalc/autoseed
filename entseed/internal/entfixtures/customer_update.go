@@ -42,6 +42,76 @@ func (_u *CustomerUpdate) SetNillableEmail(v *string) *CustomerUpdate {
 	return _u
 }
 
+// SetFirstName sets the "first_name" field.
+func (_u *CustomerUpdate) SetFirstName(v string) *CustomerUpdate {
+	_u.mutation.SetFirstName(v)
+	return _u
+}
+
+// SetNillableFirstName sets the "first_name" field if the given value is not nil.
+func (_u *CustomerUpdate) SetNillableFirstName(v *string) *CustomerUpdate {
+	if v != nil {
+		_u.SetFirstName(*v)
+	}
+	return _u
+}
+
+// SetLastName sets the "last_name" field.
+func (_u *CustomerUpdate) SetLastName(v string) *CustomerUpdate {
+	_u.mutation.SetLastName(v)
+	return _u
+}
+
+// SetNillableLastName sets the "last_name" field if the given value is not nil.
+func (_u *CustomerUpdate) SetNillableLastName(v *string) *CustomerUpdate {
+	if v != nil {
+		_u.SetLastName(*v)
+	}
+	return _u
+}
+
+// SetCity sets the "city" field.
+func (_u *CustomerUpdate) SetCity(v string) *CustomerUpdate {
+	_u.mutation.SetCity(v)
+	return _u
+}
+
+// SetNillableCity sets the "city" field if the given value is not nil.
+func (_u *CustomerUpdate) SetNillableCity(v *string) *CustomerUpdate {
+	if v != nil {
+		_u.SetCity(*v)
+	}
+	return _u
+}
+
+// SetStreet sets the "street" field.
+func (_u *CustomerUpdate) SetStreet(v string) *CustomerUpdate {
+	_u.mutation.SetStreet(v)
+	return _u
+}
+
+// SetNillableStreet sets the "street" field if the given value is not nil.
+func (_u *CustomerUpdate) SetNillableStreet(v *string) *CustomerUpdate {
+	if v != nil {
+		_u.SetStreet(*v)
+	}
+	return _u
+}
+
+// SetPhone sets the "phone" field.
+func (_u *CustomerUpdate) SetPhone(v string) *CustomerUpdate {
+	_u.mutation.SetPhone(v)
+	return _u
+}
+
+// SetNillablePhone sets the "phone" field if the given value is not nil.
+func (_u *CustomerUpdate) SetNillablePhone(v *string) *CustomerUpdate {
+	if v != nil {
+		_u.SetPhone(*v)
+	}
+	return _u
+}
+
 // AddOrderIDs adds the "orders" edge to the Order entity by IDs.
 func (_u *CustomerUpdate) AddOrderIDs(ids ...int) *CustomerUpdate {
 	_u.mutation.AddOrderIDs(ids...)
@@ -135,6 +205,21 @@ func (_u *CustomerUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.Email(); ok {
 		_spec.SetField(customer.FieldEmail, field.TypeString, value)
 	}
+	if value, ok := _u.mutation.FirstName(); ok {
+		_spec.SetField(customer.FieldFirstName, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.LastName(); ok {
+		_spec.SetField(customer.FieldLastName, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.City(); ok {
+		_spec.SetField(customer.FieldCity, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.Street(); ok {
+		_spec.SetField(customer.FieldStreet, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.Phone(); ok {
+		_spec.SetField(customer.FieldPhone, field.TypeString, value)
+	}
 	if _u.mutation.OrdersCleared() {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
@@ -210,6 +295,76 @@ func (_u *CustomerUpdateOne) SetEmail(v string) *CustomerUpdateOne {
 func (_u *CustomerUpdateOne) SetNillableEmail(v *string) *CustomerUpdateOne {
 	if v != nil {
 		_u.SetEmail(*v)
+	}
+	return _u
+}
+
+// SetFirstName sets the "first_name" field.
+func (_u *CustomerUpdateOne) SetFirstName(v string) *CustomerUpdateOne {
+	_u.mutation.SetFirstName(v)
+	return _u
+}
+
+// SetNillableFirstName sets the "first_name" field if the given value is not nil.
+func (_u *CustomerUpdateOne) SetNillableFirstName(v *string) *CustomerUpdateOne {
+	if v != nil {
+		_u.SetFirstName(*v)
+	}
+	return _u
+}
+
+// SetLastName sets the "last_name" field.
+func (_u *CustomerUpdateOne) SetLastName(v string) *CustomerUpdateOne {
+	_u.mutation.SetLastName(v)
+	return _u
+}
+
+// SetNillableLastName sets the "last_name" field if the given value is not nil.
+func (_u *CustomerUpdateOne) SetNillableLastName(v *string) *CustomerUpdateOne {
+	if v != nil {
+		_u.SetLastName(*v)
+	}
+	return _u
+}
+
+// SetCity sets the "city" field.
+func (_u *CustomerUpdateOne) SetCity(v string) *CustomerUpdateOne {
+	_u.mutation.SetCity(v)
+	return _u
+}
+
+// SetNillableCity sets the "city" field if the given value is not nil.
+func (_u *CustomerUpdateOne) SetNillableCity(v *string) *CustomerUpdateOne {
+	if v != nil {
+		_u.SetCity(*v)
+	}
+	return _u
+}
+
+// SetStreet sets the "street" field.
+func (_u *CustomerUpdateOne) SetStreet(v string) *CustomerUpdateOne {
+	_u.mutation.SetStreet(v)
+	return _u
+}
+
+// SetNillableStreet sets the "street" field if the given value is not nil.
+func (_u *CustomerUpdateOne) SetNillableStreet(v *string) *CustomerUpdateOne {
+	if v != nil {
+		_u.SetStreet(*v)
+	}
+	return _u
+}
+
+// SetPhone sets the "phone" field.
+func (_u *CustomerUpdateOne) SetPhone(v string) *CustomerUpdateOne {
+	_u.mutation.SetPhone(v)
+	return _u
+}
+
+// SetNillablePhone sets the "phone" field if the given value is not nil.
+func (_u *CustomerUpdateOne) SetNillablePhone(v *string) *CustomerUpdateOne {
+	if v != nil {
+		_u.SetPhone(*v)
 	}
 	return _u
 }
@@ -336,6 +491,21 @@ func (_u *CustomerUpdateOne) sqlSave(ctx context.Context) (_node *Customer, err 
 	}
 	if value, ok := _u.mutation.Email(); ok {
 		_spec.SetField(customer.FieldEmail, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.FirstName(); ok {
+		_spec.SetField(customer.FieldFirstName, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.LastName(); ok {
+		_spec.SetField(customer.FieldLastName, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.City(); ok {
+		_spec.SetField(customer.FieldCity, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.Street(); ok {
+		_spec.SetField(customer.FieldStreet, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.Phone(); ok {
+		_spec.SetField(customer.FieldPhone, field.TypeString, value)
 	}
 	if _u.mutation.OrdersCleared() {
 		edge := &sqlgraph.EdgeSpec{

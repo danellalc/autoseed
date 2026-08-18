@@ -14,6 +14,16 @@ const (
 	FieldID = "id"
 	// FieldEmail holds the string denoting the email field in the database.
 	FieldEmail = "email"
+	// FieldFirstName holds the string denoting the first_name field in the database.
+	FieldFirstName = "first_name"
+	// FieldLastName holds the string denoting the last_name field in the database.
+	FieldLastName = "last_name"
+	// FieldCity holds the string denoting the city field in the database.
+	FieldCity = "city"
+	// FieldStreet holds the string denoting the street field in the database.
+	FieldStreet = "street"
+	// FieldPhone holds the string denoting the phone field in the database.
+	FieldPhone = "phone"
 	// EdgeOrders holds the string denoting the orders edge name in mutations.
 	EdgeOrders = "orders"
 	// Table holds the table name of the customer in the database.
@@ -31,6 +41,11 @@ const (
 var Columns = []string{
 	FieldID,
 	FieldEmail,
+	FieldFirstName,
+	FieldLastName,
+	FieldCity,
+	FieldStreet,
+	FieldPhone,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -59,6 +74,31 @@ func ByID(opts ...sql.OrderTermOption) OrderOption {
 // ByEmail orders the results by the email field.
 func ByEmail(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldEmail, opts...).ToFunc()
+}
+
+// ByFirstName orders the results by the first_name field.
+func ByFirstName(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldFirstName, opts...).ToFunc()
+}
+
+// ByLastName orders the results by the last_name field.
+func ByLastName(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldLastName, opts...).ToFunc()
+}
+
+// ByCity orders the results by the city field.
+func ByCity(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCity, opts...).ToFunc()
+}
+
+// ByStreet orders the results by the street field.
+func ByStreet(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldStreet, opts...).ToFunc()
+}
+
+// ByPhone orders the results by the phone field.
+func ByPhone(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldPhone, opts...).ToFunc()
 }
 
 // ByOrdersCount orders the results by orders count.

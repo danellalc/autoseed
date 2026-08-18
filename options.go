@@ -7,13 +7,15 @@ type Options struct {
 	Seed    uint64
 	Scale   int
 	NilRate float64
+	Locale  string
 }
 
 // NewOptions returns the default Options with every given Option applied.
 // The default seed is 0; the default scale is 100; the default nil rate
-// is 0 (every nullable field always gets a generated value).
+// is 0 (every nullable field always gets a generated value); the default
+// locale is "" (generic, English-shaped values).
 func NewOptions(opts ...Option) Options {
-	options := Options{Seed: 0, Scale: 100, NilRate: 0}
+	options := Options{Seed: 0, Scale: 100, NilRate: 0, Locale: ""}
 	for _, opt := range opts {
 		opt(&options)
 	}
@@ -50,4 +52,16 @@ func WithNilRate(rate float64) Option {
 		}
 		o.NilRate = rate
 	}
+}
+
+// WithLocale sets which locale's own rules claim a name, address and
+// phone field before the generic, English-shaped fallback gets a turn —
+// "pt_BR" today, more as demand shows up, the same on-demand bar every
+// adapter and rule in this project ships under. An unrecognized locale,
+// including the empty default, falls back to the generic rules — the
+// same as not setting a locale at all, never an error, matching every
+// other Option's own silent-normalize behavior (WithNilRate clamps
+// rather than rejecting an out-of-range rate).
+func WithLocale(locale string) Option {
+	return func(o *Options) { o.Locale = locale }
 }

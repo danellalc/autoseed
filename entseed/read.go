@@ -41,7 +41,7 @@ func buildEntity(node *gen.Type) (autoseed.Entity, []autoseed.SkipReason, error)
 		return autoseed.Entity{}, nil, fmt.Errorf("entseed: %s.%s: %w", node.Name, node.ID.Name, err)
 	}
 	fields := []autoseed.Field{{
-		Name:          node.ID.Name,
+		Name:          pascal(node.ID.Name),
 		Type:          idType,
 		PrimaryKey:    true,
 		AutoIncrement: !node.ID.UserDefined,
@@ -56,7 +56,13 @@ func buildEntity(node *gen.Type) (autoseed.Entity, []autoseed.SkipReason, error)
 			return autoseed.Entity{}, nil, fmt.Errorf("entseed: %s.%s: %w", node.Name, f.Name, err)
 		}
 		fields = append(fields, autoseed.Field{
-			Name:     f.Name,
+			// Pascal-cased, not ent's own declared name verbatim, so a
+			// field an idiomatic ent schema declares snake_case (e.g.
+			// "created_at") still ends in the same "CreatedAt"-style
+			// suffix inference's named rules match against -- the GORM
+			// convention every rule was written for, since a Go struct
+			// field name is always already PascalCase.
+			Name:     pascal(f.Name),
 			Type:     fieldType,
 			Nullable: f.Optional,
 			Unique:   f.Unique,
@@ -110,15 +116,17 @@ func buildEntity(node *gen.Type) (autoseed.Entity, []autoseed.SkipReason, error)
 // Mutation.SetField matches against a field's storage key, not its
 // declared name — the two coincide unless a field declares an explicit
 // StorageKey override, so persist.go must translate through this map
-// rather than pass a field's own Name straight to SetField.
+// rather than pass a field's own Name straight to SetField. Keyed by the
+// same pascal-cased name buildEntity gives the field, not ent's own
+// declared name, since that's what a row's generated values map uses.
 func storageKeyByName(node *gen.Type) map[string]string {
 	keys := make(map[string]string, len(node.Fields)+1)
-	keys[node.ID.Name] = node.ID.StorageKey()
+	keys[pascal(node.ID.Name)] = node.ID.StorageKey()
 	for _, f := range node.Fields {
 		if f.IsEdgeField() {
 			continue
 		}
-		keys[f.Name] = f.StorageKey()
+		keys[pascal(f.Name)] = f.StorageKey()
 	}
 	return keys
 }
@@ -137,7 +145,7 @@ func uniqueConstraints(node *gen.Type) [][]string {
 		if f.IsEdgeField() {
 			continue
 		}
-		nameByColumn[f.StorageKey()] = f.Name
+		nameByColumn[f.StorageKey()] = pascal(f.Name)
 	}
 	for _, e := range node.Edges {
 		if e.OwnFK() {

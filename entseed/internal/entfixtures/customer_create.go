@@ -26,6 +26,36 @@ func (_c *CustomerCreate) SetEmail(v string) *CustomerCreate {
 	return _c
 }
 
+// SetFirstName sets the "first_name" field.
+func (_c *CustomerCreate) SetFirstName(v string) *CustomerCreate {
+	_c.mutation.SetFirstName(v)
+	return _c
+}
+
+// SetLastName sets the "last_name" field.
+func (_c *CustomerCreate) SetLastName(v string) *CustomerCreate {
+	_c.mutation.SetLastName(v)
+	return _c
+}
+
+// SetCity sets the "city" field.
+func (_c *CustomerCreate) SetCity(v string) *CustomerCreate {
+	_c.mutation.SetCity(v)
+	return _c
+}
+
+// SetStreet sets the "street" field.
+func (_c *CustomerCreate) SetStreet(v string) *CustomerCreate {
+	_c.mutation.SetStreet(v)
+	return _c
+}
+
+// SetPhone sets the "phone" field.
+func (_c *CustomerCreate) SetPhone(v string) *CustomerCreate {
+	_c.mutation.SetPhone(v)
+	return _c
+}
+
 // AddOrderIDs adds the "orders" edge to the Order entity by IDs.
 func (_c *CustomerCreate) AddOrderIDs(ids ...int) *CustomerCreate {
 	_c.mutation.AddOrderIDs(ids...)
@@ -83,6 +113,21 @@ func (_c *CustomerCreate) check() error {
 			return &ValidationError{Name: "email", err: fmt.Errorf(`entfixtures: validator failed for field "Customer.email": %w`, err)}
 		}
 	}
+	if _, ok := _c.mutation.FirstName(); !ok {
+		return &ValidationError{Name: "first_name", err: errors.New(`entfixtures: missing required field "Customer.first_name"`)}
+	}
+	if _, ok := _c.mutation.LastName(); !ok {
+		return &ValidationError{Name: "last_name", err: errors.New(`entfixtures: missing required field "Customer.last_name"`)}
+	}
+	if _, ok := _c.mutation.City(); !ok {
+		return &ValidationError{Name: "city", err: errors.New(`entfixtures: missing required field "Customer.city"`)}
+	}
+	if _, ok := _c.mutation.Street(); !ok {
+		return &ValidationError{Name: "street", err: errors.New(`entfixtures: missing required field "Customer.street"`)}
+	}
+	if _, ok := _c.mutation.Phone(); !ok {
+		return &ValidationError{Name: "phone", err: errors.New(`entfixtures: missing required field "Customer.phone"`)}
+	}
 	return nil
 }
 
@@ -112,6 +157,26 @@ func (_c *CustomerCreate) createSpec() (*Customer, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Email(); ok {
 		_spec.SetField(customer.FieldEmail, field.TypeString, value)
 		_node.Email = value
+	}
+	if value, ok := _c.mutation.FirstName(); ok {
+		_spec.SetField(customer.FieldFirstName, field.TypeString, value)
+		_node.FirstName = value
+	}
+	if value, ok := _c.mutation.LastName(); ok {
+		_spec.SetField(customer.FieldLastName, field.TypeString, value)
+		_node.LastName = value
+	}
+	if value, ok := _c.mutation.City(); ok {
+		_spec.SetField(customer.FieldCity, field.TypeString, value)
+		_node.City = value
+	}
+	if value, ok := _c.mutation.Street(); ok {
+		_spec.SetField(customer.FieldStreet, field.TypeString, value)
+		_node.Street = value
+	}
+	if value, ok := _c.mutation.Phone(); ok {
+		_spec.SetField(customer.FieldPhone, field.TypeString, value)
+		_node.Phone = value
 	}
 	if nodes := _c.mutation.OrdersIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{

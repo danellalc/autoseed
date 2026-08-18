@@ -58,6 +58,31 @@ func Email(v string) predicate.Customer {
 	return predicate.Customer(sql.FieldEQ(FieldEmail, v))
 }
 
+// FirstName applies equality check predicate on the "first_name" field. It's identical to FirstNameEQ.
+func FirstName(v string) predicate.Customer {
+	return predicate.Customer(sql.FieldEQ(FieldFirstName, v))
+}
+
+// LastName applies equality check predicate on the "last_name" field. It's identical to LastNameEQ.
+func LastName(v string) predicate.Customer {
+	return predicate.Customer(sql.FieldEQ(FieldLastName, v))
+}
+
+// City applies equality check predicate on the "city" field. It's identical to CityEQ.
+func City(v string) predicate.Customer {
+	return predicate.Customer(sql.FieldEQ(FieldCity, v))
+}
+
+// Street applies equality check predicate on the "street" field. It's identical to StreetEQ.
+func Street(v string) predicate.Customer {
+	return predicate.Customer(sql.FieldEQ(FieldStreet, v))
+}
+
+// Phone applies equality check predicate on the "phone" field. It's identical to PhoneEQ.
+func Phone(v string) predicate.Customer {
+	return predicate.Customer(sql.FieldEQ(FieldPhone, v))
+}
+
 // EmailEQ applies the EQ predicate on the "email" field.
 func EmailEQ(v string) predicate.Customer {
 	return predicate.Customer(sql.FieldEQ(FieldEmail, v))
@@ -121,6 +146,331 @@ func EmailEqualFold(v string) predicate.Customer {
 // EmailContainsFold applies the ContainsFold predicate on the "email" field.
 func EmailContainsFold(v string) predicate.Customer {
 	return predicate.Customer(sql.FieldContainsFold(FieldEmail, v))
+}
+
+// FirstNameEQ applies the EQ predicate on the "first_name" field.
+func FirstNameEQ(v string) predicate.Customer {
+	return predicate.Customer(sql.FieldEQ(FieldFirstName, v))
+}
+
+// FirstNameNEQ applies the NEQ predicate on the "first_name" field.
+func FirstNameNEQ(v string) predicate.Customer {
+	return predicate.Customer(sql.FieldNEQ(FieldFirstName, v))
+}
+
+// FirstNameIn applies the In predicate on the "first_name" field.
+func FirstNameIn(vs ...string) predicate.Customer {
+	return predicate.Customer(sql.FieldIn(FieldFirstName, vs...))
+}
+
+// FirstNameNotIn applies the NotIn predicate on the "first_name" field.
+func FirstNameNotIn(vs ...string) predicate.Customer {
+	return predicate.Customer(sql.FieldNotIn(FieldFirstName, vs...))
+}
+
+// FirstNameGT applies the GT predicate on the "first_name" field.
+func FirstNameGT(v string) predicate.Customer {
+	return predicate.Customer(sql.FieldGT(FieldFirstName, v))
+}
+
+// FirstNameGTE applies the GTE predicate on the "first_name" field.
+func FirstNameGTE(v string) predicate.Customer {
+	return predicate.Customer(sql.FieldGTE(FieldFirstName, v))
+}
+
+// FirstNameLT applies the LT predicate on the "first_name" field.
+func FirstNameLT(v string) predicate.Customer {
+	return predicate.Customer(sql.FieldLT(FieldFirstName, v))
+}
+
+// FirstNameLTE applies the LTE predicate on the "first_name" field.
+func FirstNameLTE(v string) predicate.Customer {
+	return predicate.Customer(sql.FieldLTE(FieldFirstName, v))
+}
+
+// FirstNameContains applies the Contains predicate on the "first_name" field.
+func FirstNameContains(v string) predicate.Customer {
+	return predicate.Customer(sql.FieldContains(FieldFirstName, v))
+}
+
+// FirstNameHasPrefix applies the HasPrefix predicate on the "first_name" field.
+func FirstNameHasPrefix(v string) predicate.Customer {
+	return predicate.Customer(sql.FieldHasPrefix(FieldFirstName, v))
+}
+
+// FirstNameHasSuffix applies the HasSuffix predicate on the "first_name" field.
+func FirstNameHasSuffix(v string) predicate.Customer {
+	return predicate.Customer(sql.FieldHasSuffix(FieldFirstName, v))
+}
+
+// FirstNameEqualFold applies the EqualFold predicate on the "first_name" field.
+func FirstNameEqualFold(v string) predicate.Customer {
+	return predicate.Customer(sql.FieldEqualFold(FieldFirstName, v))
+}
+
+// FirstNameContainsFold applies the ContainsFold predicate on the "first_name" field.
+func FirstNameContainsFold(v string) predicate.Customer {
+	return predicate.Customer(sql.FieldContainsFold(FieldFirstName, v))
+}
+
+// LastNameEQ applies the EQ predicate on the "last_name" field.
+func LastNameEQ(v string) predicate.Customer {
+	return predicate.Customer(sql.FieldEQ(FieldLastName, v))
+}
+
+// LastNameNEQ applies the NEQ predicate on the "last_name" field.
+func LastNameNEQ(v string) predicate.Customer {
+	return predicate.Customer(sql.FieldNEQ(FieldLastName, v))
+}
+
+// LastNameIn applies the In predicate on the "last_name" field.
+func LastNameIn(vs ...string) predicate.Customer {
+	return predicate.Customer(sql.FieldIn(FieldLastName, vs...))
+}
+
+// LastNameNotIn applies the NotIn predicate on the "last_name" field.
+func LastNameNotIn(vs ...string) predicate.Customer {
+	return predicate.Customer(sql.FieldNotIn(FieldLastName, vs...))
+}
+
+// LastNameGT applies the GT predicate on the "last_name" field.
+func LastNameGT(v string) predicate.Customer {
+	return predicate.Customer(sql.FieldGT(FieldLastName, v))
+}
+
+// LastNameGTE applies the GTE predicate on the "last_name" field.
+func LastNameGTE(v string) predicate.Customer {
+	return predicate.Customer(sql.FieldGTE(FieldLastName, v))
+}
+
+// LastNameLT applies the LT predicate on the "last_name" field.
+func LastNameLT(v string) predicate.Customer {
+	return predicate.Customer(sql.FieldLT(FieldLastName, v))
+}
+
+// LastNameLTE applies the LTE predicate on the "last_name" field.
+func LastNameLTE(v string) predicate.Customer {
+	return predicate.Customer(sql.FieldLTE(FieldLastName, v))
+}
+
+// LastNameContains applies the Contains predicate on the "last_name" field.
+func LastNameContains(v string) predicate.Customer {
+	return predicate.Customer(sql.FieldContains(FieldLastName, v))
+}
+
+// LastNameHasPrefix applies the HasPrefix predicate on the "last_name" field.
+func LastNameHasPrefix(v string) predicate.Customer {
+	return predicate.Customer(sql.FieldHasPrefix(FieldLastName, v))
+}
+
+// LastNameHasSuffix applies the HasSuffix predicate on the "last_name" field.
+func LastNameHasSuffix(v string) predicate.Customer {
+	return predicate.Customer(sql.FieldHasSuffix(FieldLastName, v))
+}
+
+// LastNameEqualFold applies the EqualFold predicate on the "last_name" field.
+func LastNameEqualFold(v string) predicate.Customer {
+	return predicate.Customer(sql.FieldEqualFold(FieldLastName, v))
+}
+
+// LastNameContainsFold applies the ContainsFold predicate on the "last_name" field.
+func LastNameContainsFold(v string) predicate.Customer {
+	return predicate.Customer(sql.FieldContainsFold(FieldLastName, v))
+}
+
+// CityEQ applies the EQ predicate on the "city" field.
+func CityEQ(v string) predicate.Customer {
+	return predicate.Customer(sql.FieldEQ(FieldCity, v))
+}
+
+// CityNEQ applies the NEQ predicate on the "city" field.
+func CityNEQ(v string) predicate.Customer {
+	return predicate.Customer(sql.FieldNEQ(FieldCity, v))
+}
+
+// CityIn applies the In predicate on the "city" field.
+func CityIn(vs ...string) predicate.Customer {
+	return predicate.Customer(sql.FieldIn(FieldCity, vs...))
+}
+
+// CityNotIn applies the NotIn predicate on the "city" field.
+func CityNotIn(vs ...string) predicate.Customer {
+	return predicate.Customer(sql.FieldNotIn(FieldCity, vs...))
+}
+
+// CityGT applies the GT predicate on the "city" field.
+func CityGT(v string) predicate.Customer {
+	return predicate.Customer(sql.FieldGT(FieldCity, v))
+}
+
+// CityGTE applies the GTE predicate on the "city" field.
+func CityGTE(v string) predicate.Customer {
+	return predicate.Customer(sql.FieldGTE(FieldCity, v))
+}
+
+// CityLT applies the LT predicate on the "city" field.
+func CityLT(v string) predicate.Customer {
+	return predicate.Customer(sql.FieldLT(FieldCity, v))
+}
+
+// CityLTE applies the LTE predicate on the "city" field.
+func CityLTE(v string) predicate.Customer {
+	return predicate.Customer(sql.FieldLTE(FieldCity, v))
+}
+
+// CityContains applies the Contains predicate on the "city" field.
+func CityContains(v string) predicate.Customer {
+	return predicate.Customer(sql.FieldContains(FieldCity, v))
+}
+
+// CityHasPrefix applies the HasPrefix predicate on the "city" field.
+func CityHasPrefix(v string) predicate.Customer {
+	return predicate.Customer(sql.FieldHasPrefix(FieldCity, v))
+}
+
+// CityHasSuffix applies the HasSuffix predicate on the "city" field.
+func CityHasSuffix(v string) predicate.Customer {
+	return predicate.Customer(sql.FieldHasSuffix(FieldCity, v))
+}
+
+// CityEqualFold applies the EqualFold predicate on the "city" field.
+func CityEqualFold(v string) predicate.Customer {
+	return predicate.Customer(sql.FieldEqualFold(FieldCity, v))
+}
+
+// CityContainsFold applies the ContainsFold predicate on the "city" field.
+func CityContainsFold(v string) predicate.Customer {
+	return predicate.Customer(sql.FieldContainsFold(FieldCity, v))
+}
+
+// StreetEQ applies the EQ predicate on the "street" field.
+func StreetEQ(v string) predicate.Customer {
+	return predicate.Customer(sql.FieldEQ(FieldStreet, v))
+}
+
+// StreetNEQ applies the NEQ predicate on the "street" field.
+func StreetNEQ(v string) predicate.Customer {
+	return predicate.Customer(sql.FieldNEQ(FieldStreet, v))
+}
+
+// StreetIn applies the In predicate on the "street" field.
+func StreetIn(vs ...string) predicate.Customer {
+	return predicate.Customer(sql.FieldIn(FieldStreet, vs...))
+}
+
+// StreetNotIn applies the NotIn predicate on the "street" field.
+func StreetNotIn(vs ...string) predicate.Customer {
+	return predicate.Customer(sql.FieldNotIn(FieldStreet, vs...))
+}
+
+// StreetGT applies the GT predicate on the "street" field.
+func StreetGT(v string) predicate.Customer {
+	return predicate.Customer(sql.FieldGT(FieldStreet, v))
+}
+
+// StreetGTE applies the GTE predicate on the "street" field.
+func StreetGTE(v string) predicate.Customer {
+	return predicate.Customer(sql.FieldGTE(FieldStreet, v))
+}
+
+// StreetLT applies the LT predicate on the "street" field.
+func StreetLT(v string) predicate.Customer {
+	return predicate.Customer(sql.FieldLT(FieldStreet, v))
+}
+
+// StreetLTE applies the LTE predicate on the "street" field.
+func StreetLTE(v string) predicate.Customer {
+	return predicate.Customer(sql.FieldLTE(FieldStreet, v))
+}
+
+// StreetContains applies the Contains predicate on the "street" field.
+func StreetContains(v string) predicate.Customer {
+	return predicate.Customer(sql.FieldContains(FieldStreet, v))
+}
+
+// StreetHasPrefix applies the HasPrefix predicate on the "street" field.
+func StreetHasPrefix(v string) predicate.Customer {
+	return predicate.Customer(sql.FieldHasPrefix(FieldStreet, v))
+}
+
+// StreetHasSuffix applies the HasSuffix predicate on the "street" field.
+func StreetHasSuffix(v string) predicate.Customer {
+	return predicate.Customer(sql.FieldHasSuffix(FieldStreet, v))
+}
+
+// StreetEqualFold applies the EqualFold predicate on the "street" field.
+func StreetEqualFold(v string) predicate.Customer {
+	return predicate.Customer(sql.FieldEqualFold(FieldStreet, v))
+}
+
+// StreetContainsFold applies the ContainsFold predicate on the "street" field.
+func StreetContainsFold(v string) predicate.Customer {
+	return predicate.Customer(sql.FieldContainsFold(FieldStreet, v))
+}
+
+// PhoneEQ applies the EQ predicate on the "phone" field.
+func PhoneEQ(v string) predicate.Customer {
+	return predicate.Customer(sql.FieldEQ(FieldPhone, v))
+}
+
+// PhoneNEQ applies the NEQ predicate on the "phone" field.
+func PhoneNEQ(v string) predicate.Customer {
+	return predicate.Customer(sql.FieldNEQ(FieldPhone, v))
+}
+
+// PhoneIn applies the In predicate on the "phone" field.
+func PhoneIn(vs ...string) predicate.Customer {
+	return predicate.Customer(sql.FieldIn(FieldPhone, vs...))
+}
+
+// PhoneNotIn applies the NotIn predicate on the "phone" field.
+func PhoneNotIn(vs ...string) predicate.Customer {
+	return predicate.Customer(sql.FieldNotIn(FieldPhone, vs...))
+}
+
+// PhoneGT applies the GT predicate on the "phone" field.
+func PhoneGT(v string) predicate.Customer {
+	return predicate.Customer(sql.FieldGT(FieldPhone, v))
+}
+
+// PhoneGTE applies the GTE predicate on the "phone" field.
+func PhoneGTE(v string) predicate.Customer {
+	return predicate.Customer(sql.FieldGTE(FieldPhone, v))
+}
+
+// PhoneLT applies the LT predicate on the "phone" field.
+func PhoneLT(v string) predicate.Customer {
+	return predicate.Customer(sql.FieldLT(FieldPhone, v))
+}
+
+// PhoneLTE applies the LTE predicate on the "phone" field.
+func PhoneLTE(v string) predicate.Customer {
+	return predicate.Customer(sql.FieldLTE(FieldPhone, v))
+}
+
+// PhoneContains applies the Contains predicate on the "phone" field.
+func PhoneContains(v string) predicate.Customer {
+	return predicate.Customer(sql.FieldContains(FieldPhone, v))
+}
+
+// PhoneHasPrefix applies the HasPrefix predicate on the "phone" field.
+func PhoneHasPrefix(v string) predicate.Customer {
+	return predicate.Customer(sql.FieldHasPrefix(FieldPhone, v))
+}
+
+// PhoneHasSuffix applies the HasSuffix predicate on the "phone" field.
+func PhoneHasSuffix(v string) predicate.Customer {
+	return predicate.Customer(sql.FieldHasSuffix(FieldPhone, v))
+}
+
+// PhoneEqualFold applies the EqualFold predicate on the "phone" field.
+func PhoneEqualFold(v string) predicate.Customer {
+	return predicate.Customer(sql.FieldEqualFold(FieldPhone, v))
+}
+
+// PhoneContainsFold applies the ContainsFold predicate on the "phone" field.
+func PhoneContainsFold(v string) predicate.Customer {
+	return predicate.Customer(sql.FieldContainsFold(FieldPhone, v))
 }
 
 // HasOrders applies the HasEdge predicate on the "orders" edge.

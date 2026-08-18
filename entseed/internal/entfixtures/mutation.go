@@ -857,6 +857,11 @@ type CustomerMutation struct {
 	typ           string
 	id            *int
 	email         *string
+	first_name    *string
+	last_name     *string
+	city          *string
+	street        *string
+	phone         *string
 	clearedFields map[string]struct{}
 	orders        map[int]struct{}
 	removedorders map[int]struct{}
@@ -1000,6 +1005,186 @@ func (m *CustomerMutation) ResetEmail() {
 	m.email = nil
 }
 
+// SetFirstName sets the "first_name" field.
+func (m *CustomerMutation) SetFirstName(s string) {
+	m.first_name = &s
+}
+
+// FirstName returns the value of the "first_name" field in the mutation.
+func (m *CustomerMutation) FirstName() (r string, exists bool) {
+	v := m.first_name
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldFirstName returns the old "first_name" field's value of the Customer entity.
+// If the Customer object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CustomerMutation) OldFirstName(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldFirstName is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldFirstName requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldFirstName: %w", err)
+	}
+	return oldValue.FirstName, nil
+}
+
+// ResetFirstName resets all changes to the "first_name" field.
+func (m *CustomerMutation) ResetFirstName() {
+	m.first_name = nil
+}
+
+// SetLastName sets the "last_name" field.
+func (m *CustomerMutation) SetLastName(s string) {
+	m.last_name = &s
+}
+
+// LastName returns the value of the "last_name" field in the mutation.
+func (m *CustomerMutation) LastName() (r string, exists bool) {
+	v := m.last_name
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLastName returns the old "last_name" field's value of the Customer entity.
+// If the Customer object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CustomerMutation) OldLastName(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLastName is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLastName requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLastName: %w", err)
+	}
+	return oldValue.LastName, nil
+}
+
+// ResetLastName resets all changes to the "last_name" field.
+func (m *CustomerMutation) ResetLastName() {
+	m.last_name = nil
+}
+
+// SetCity sets the "city" field.
+func (m *CustomerMutation) SetCity(s string) {
+	m.city = &s
+}
+
+// City returns the value of the "city" field in the mutation.
+func (m *CustomerMutation) City() (r string, exists bool) {
+	v := m.city
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCity returns the old "city" field's value of the Customer entity.
+// If the Customer object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CustomerMutation) OldCity(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCity is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCity requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCity: %w", err)
+	}
+	return oldValue.City, nil
+}
+
+// ResetCity resets all changes to the "city" field.
+func (m *CustomerMutation) ResetCity() {
+	m.city = nil
+}
+
+// SetStreet sets the "street" field.
+func (m *CustomerMutation) SetStreet(s string) {
+	m.street = &s
+}
+
+// Street returns the value of the "street" field in the mutation.
+func (m *CustomerMutation) Street() (r string, exists bool) {
+	v := m.street
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldStreet returns the old "street" field's value of the Customer entity.
+// If the Customer object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CustomerMutation) OldStreet(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStreet is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStreet requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStreet: %w", err)
+	}
+	return oldValue.Street, nil
+}
+
+// ResetStreet resets all changes to the "street" field.
+func (m *CustomerMutation) ResetStreet() {
+	m.street = nil
+}
+
+// SetPhone sets the "phone" field.
+func (m *CustomerMutation) SetPhone(s string) {
+	m.phone = &s
+}
+
+// Phone returns the value of the "phone" field in the mutation.
+func (m *CustomerMutation) Phone() (r string, exists bool) {
+	v := m.phone
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPhone returns the old "phone" field's value of the Customer entity.
+// If the Customer object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CustomerMutation) OldPhone(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPhone is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPhone requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPhone: %w", err)
+	}
+	return oldValue.Phone, nil
+}
+
+// ResetPhone resets all changes to the "phone" field.
+func (m *CustomerMutation) ResetPhone() {
+	m.phone = nil
+}
+
 // AddOrderIDs adds the "orders" edge to the Order entity by ids.
 func (m *CustomerMutation) AddOrderIDs(ids ...int) {
 	if m.orders == nil {
@@ -1088,9 +1273,24 @@ func (m *CustomerMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *CustomerMutation) Fields() []string {
-	fields := make([]string, 0, 1)
+	fields := make([]string, 0, 6)
 	if m.email != nil {
 		fields = append(fields, customer.FieldEmail)
+	}
+	if m.first_name != nil {
+		fields = append(fields, customer.FieldFirstName)
+	}
+	if m.last_name != nil {
+		fields = append(fields, customer.FieldLastName)
+	}
+	if m.city != nil {
+		fields = append(fields, customer.FieldCity)
+	}
+	if m.street != nil {
+		fields = append(fields, customer.FieldStreet)
+	}
+	if m.phone != nil {
+		fields = append(fields, customer.FieldPhone)
 	}
 	return fields
 }
@@ -1102,6 +1302,16 @@ func (m *CustomerMutation) Field(name string) (ent.Value, bool) {
 	switch name {
 	case customer.FieldEmail:
 		return m.Email()
+	case customer.FieldFirstName:
+		return m.FirstName()
+	case customer.FieldLastName:
+		return m.LastName()
+	case customer.FieldCity:
+		return m.City()
+	case customer.FieldStreet:
+		return m.Street()
+	case customer.FieldPhone:
+		return m.Phone()
 	}
 	return nil, false
 }
@@ -1113,6 +1323,16 @@ func (m *CustomerMutation) OldField(ctx context.Context, name string) (ent.Value
 	switch name {
 	case customer.FieldEmail:
 		return m.OldEmail(ctx)
+	case customer.FieldFirstName:
+		return m.OldFirstName(ctx)
+	case customer.FieldLastName:
+		return m.OldLastName(ctx)
+	case customer.FieldCity:
+		return m.OldCity(ctx)
+	case customer.FieldStreet:
+		return m.OldStreet(ctx)
+	case customer.FieldPhone:
+		return m.OldPhone(ctx)
 	}
 	return nil, fmt.Errorf("unknown Customer field %s", name)
 }
@@ -1128,6 +1348,41 @@ func (m *CustomerMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetEmail(v)
+		return nil
+	case customer.FieldFirstName:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetFirstName(v)
+		return nil
+	case customer.FieldLastName:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLastName(v)
+		return nil
+	case customer.FieldCity:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCity(v)
+		return nil
+	case customer.FieldStreet:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetStreet(v)
+		return nil
+	case customer.FieldPhone:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPhone(v)
 		return nil
 	}
 	return fmt.Errorf("unknown Customer field %s", name)
@@ -1180,6 +1435,21 @@ func (m *CustomerMutation) ResetField(name string) error {
 	switch name {
 	case customer.FieldEmail:
 		m.ResetEmail()
+		return nil
+	case customer.FieldFirstName:
+		m.ResetFirstName()
+		return nil
+	case customer.FieldLastName:
+		m.ResetLastName()
+		return nil
+	case customer.FieldCity:
+		m.ResetCity()
+		return nil
+	case customer.FieldStreet:
+		m.ResetStreet()
+		return nil
+	case customer.FieldPhone:
+		m.ResetPhone()
 		return nil
 	}
 	return fmt.Errorf("unknown Customer field %s", name)

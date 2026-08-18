@@ -149,6 +149,35 @@ func TestSeed_Postgres_NilRateClearsOptionalField(t *testing.T) {
 	}
 }
 
+// TestSeed_Postgres_SnakeCaseFieldsGetNamedRuleTreatment guards the
+// pascal-casing fix end to end: Customer.first_name/last_name/email are
+// declared snake_case (the idiomatic ent style), and before the fix,
+// NameRule/EmailRule would never have claimed them at all -- Email would
+// have been an uncorrelated, independent gofakeit address instead of one
+// built from the same row's FirstName/LastName.
+func TestSeed_Postgres_SnakeCaseFieldsGetNamedRuleTreatment(t *testing.T) {
+	client := entClient(t)
+	ctx := context.Background()
+
+	if err := entseed.Seed(ctx, client, schemaPath, autoseed.WithSeed(9), autoseed.WithScale(20)); err != nil {
+		t.Fatalf("Seed: %v", err)
+	}
+
+	customers, err := client.Customer.Query().All(ctx)
+	if err != nil {
+		t.Fatalf("querying customers: %v", err)
+	}
+	for _, c := range customers {
+		if c.FirstName == "" || c.LastName == "" {
+			t.Fatalf("customer %d: FirstName/LastName not generated: %+v", c.ID, c)
+		}
+		wantPrefix := strings.ToLower(c.FirstName) + "." + strings.ToLower(c.LastName) + "@"
+		if !strings.HasPrefix(c.Email, wantPrefix) {
+			t.Fatalf("customer %d: Email = %q, want it to start with %q (agreeing with the same row's FirstName/LastName)", c.ID, c.Email, wantPrefix)
+		}
+	}
+}
+
 func TestSeed_Postgres_NullableSelfReference(t *testing.T) {
 	client := entClient(t)
 	ctx := context.Background()

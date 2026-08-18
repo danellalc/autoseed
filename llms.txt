@@ -4,8 +4,8 @@
 > insertion order (stable topological sort), resolves cycles (a nullable edge in two passes, a
 > required-only cycle by naming it), and writes referentially valid rows through gormseed.Seed or
 > entseed.Seed — real inserts, tested against real PostgreSQL and MySQL. Status: in development;
-> gormseed.SeedCoverage and locale are still design, not code. Read "Implemented today" vs
-> "Planned" below before generating code.
+> gormseed.SeedCoverage is still design, not code. Read "Implemented today" vs "Planned" below
+> before generating code.
 
 Unlike every other Go seeder, nothing is declared by hand — no YAML fixtures, no hand-written
 Seed() loops, no files numbered 01_, 02_ to get foreign-key order right. The model is the
@@ -81,16 +81,25 @@ Email/Name/Phone/URL/Street/City, coherent CreatedAt/UpdatedAt and Price×Quanti
 soft-delete field left nil (not deleted) 90% of the time and, for the rest, a timestamp no
 earlier than the row's own CreatedAt/UpdatedAt, generic fallbacks by Go type, and one rule with
 no opt-in — any string field named `Cpf` or `Cnpj` (case-insensitive suffix, any project)
-generates a Brazilian document number with a valid check digit. This is not locale-gated —
-there is no locale mechanism yet — so a non-Brazilian project with a coincidentally matching
-field name gets Brazilian-format data. Every rule's string output, named or generic, is
-truncated to the column's declared size, by rune not by byte, before it reaches the database. A
-field typed `sql.NullString`/`NullInt64`/`NullBool`/`NullFloat64`/`NullTime` (and the narrower
-`NullInt32`/`NullInt16`/`NullByte`), or a Go pointer field, is matched against rules by its
-wrapped/pointed-to type, so `Email sql.NullString` still gets EmailRule's treatment.
-`autoseed.WithNilRate(rate)` sets the per-row probability such a field is left out entirely
-instead, producing a real database NULL — 0 by default, so every existing call keeps its current
-behavior unless a project opts in.
+generates a Brazilian document number with a valid check digit; DocumentRule itself isn't gated
+by the locale mechanism below, since the field name alone already disambiguates it. Every rule's
+string output, named or generic, is truncated to the column's declared size, by rune not by byte,
+before it reaches the database. A field typed `sql.NullString`/`NullInt64`/`NullBool`/
+`NullFloat64`/`NullTime` (and the narrower `NullInt32`/`NullInt16`/`NullByte`), or a Go pointer
+field, is matched against rules by its wrapped/pointed-to type, so `Email sql.NullString` still
+gets EmailRule's treatment. `autoseed.WithNilRate(rate)` sets the per-row probability such a
+field is left out entirely instead, producing a real database NULL — 0 by default, so every
+existing call keeps its current behavior unless a project opts in.
+
+`autoseed.WithLocale("pt_BR")` swaps in Brazilian name/city/street/phone rules ahead of the
+generic ones — a `FirstName`/`LastName` pair from a small real-name pool, a real Brazilian city or
+a "`Rua`/`Avenida`/... <name>" street, and a `+55 (DDD) 9XXXX-XXXX` mobile number. EmailRule needs
+no locale awareness of its own: it already builds an address from whatever `FirstName`/`LastName`
+landed on the same row, so a Brazilian name flows through it for free. An unrecognized locale,
+including not calling `WithLocale` at all, falls back to the generic rules — never an error, the
+same silent-normalize convention `WithNilRate`'s own clamping already established. Only `pt_BR`
+exists today; another locale is an on-demand addition, the same bar every adapter in this project
+ships under.
 
 ## Planned, not implemented yet
 
@@ -98,7 +107,6 @@ These identifiers do not exist in the module. Do not generate calls to them.
 
 ```go
 err := gormseed.SeedCoverage(db, models)
-opts := autoseed.WithLocale("pt_BR")
 ```
 
 Coherence across DIFFERENT entities (a child row's CreatedAt at or after its parent's) is not

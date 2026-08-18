@@ -66,6 +66,32 @@ change, even if the public API itself is unchanged.
   identical to the name in every schema used before a fixture added an
   explicit `StorageKey` override. `Seed` now translates through each
   entity's own name-to-storage-key map before calling `SetField`.
+- `autoseed.WithLocale(locale)`: swaps in a locale's own name/city/street/
+  phone rules ahead of the generic ones, `Priority` -1 so they always claim
+  first. `pt_BR` is the first (and, today, only) locale: a `FirstName`/
+  `LastName` pair from a small real-name pool, a real Brazilian city or a
+  "`Rua`/`Avenida`/`Travessa`/`Alameda` <name>" street, and a
+  `+55 (DDD) 9XXXX-XXXX` mobile number from real area codes — all
+  hand-rolled, ASCII only (no diacritics), since gofakeit itself has no
+  locale data to call into, the same reason `DocumentRule`'s CPF/CNPJ
+  algorithm is hand-rolled. `EmailRule` needed no changes at all: it
+  already builds an address from whatever `FirstName`/`LastName` landed on
+  the same row, with no locale awareness of its own, so a Brazilian name
+  flows through it for free. An unrecognized locale, including not calling
+  `WithLocale`, falls back to the generic rules — never an error, matching
+  `WithNilRate`'s own silent-clamp convention.
+- Fixed a real, previously-undiscovered entseed bug this work surfaced:
+  `buildEntity` set `Field.Name` to an ent field's own declared name
+  verbatim — "first_name" for a schema author's idiomatic
+  `field.String("first_name")` — but every named inference rule matches a
+  PascalCase suffix like "FirstName" or "CreatedAt", the convention a GORM
+  struct field name always already follows. A snake_case name never
+  matches such a suffix as a continuous string, so for any idiomatically-
+  named ent schema, every named rule silently never fired: `Email` would
+  never have agreed with `FirstName`/`LastName`, `CreatedAt`/`UpdatedAt`
+  coherence would never have applied. Every field name (and the composite
+  unique index and storage-key maps keyed by it) is now pascal-cased the
+  same way an edge's own `Reference.Fields` name already was.
 
 ## [0.1.0]
 

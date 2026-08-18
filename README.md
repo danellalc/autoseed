@@ -10,9 +10,9 @@ From the author of [EFCore.AutoSeed](https://github.com/danellalc/EFCore.AutoSee
 
 In development. This README describes the full design being built — see the [roadmap](ARCHITECTURE.md#roadmap) for what ships when.
 
-**Works today:** reading a GORM or ent model, `Explain`, and `Seed` on both adapters — real inserts, in dependency order, with long-tail cardinality, single-column and composite unique-field dedup, a cardinality cap that covers a ternary/N-ary "attributed join" as well as the pairwise case, deferred second-pass cycles, and `WithNilRate` for leaving a Nullable field genuinely NULL at a configurable rate — tested against real PostgreSQL and MySQL.
+**Works today:** reading a GORM or ent model, `Explain`, and `Seed` on both adapters — real inserts, in dependency order, with long-tail cardinality, single-column and composite unique-field dedup, a cardinality cap that covers a ternary/N-ary "attributed join" as well as the pairwise case, deferred second-pass cycles, `WithNilRate` for leaving a Nullable field genuinely NULL at a configurable rate, and `WithLocale("pt_BR")` for Brazilian names, cities, streets and phone numbers — tested against real PostgreSQL and MySQL.
 
-**Not built yet:** `gormseed.SeedCoverage`, `WithLocale`, and every value-realism knob beyond the ~16 built-in inference rules (dirty data, weekday/business-hour clustering). Code blocks below that use them are the design, marked as such inline.
+**Not built yet:** `gormseed.SeedCoverage` and every value-realism knob beyond the ~16 built-in inference rules and the `pt_BR` locale (dirty data, weekday/business-hour clustering, another locale). Code blocks below that use them are the design, marked as such inline.
 
 ## The problem
 

@@ -17,6 +17,11 @@ type Customer struct {
 func (Customer) Fields() []ent.Field {
 	return []ent.Field{
 		field.String("email").Unique().MaxLen(255),
+		field.String("first_name"),
+		field.String("last_name"),
+		field.String("city"),
+		field.String("street"),
+		field.String("phone"),
 	}
 }
 

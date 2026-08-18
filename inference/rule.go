@@ -53,6 +53,21 @@ func (g *Generator) WithNilRate(rate float64) *Generator {
 	return g
 }
 
+// WithLocale adds locale's own name/address/phone rules, ahead of the
+// generic ones already registered, and returns g for chaining. An
+// unrecognized locale, including "", leaves g unchanged — the generic
+// rules already cover every field a locale rule would otherwise claim,
+// so there is nothing to fall back to.
+func (g *Generator) WithLocale(locale string) *Generator {
+	added := localeRules(locale)
+	if len(added) == 0 {
+		return g
+	}
+	g.rules = append(g.rules, added...)
+	sort.SliceStable(g.rules, func(i, j int) bool { return g.rules[i].Priority() < g.rules[j].Priority() })
+	return g
+}
+
 // GenerateRow produces a value for every field on entity that isn't
 // database-generated: a foreign key column (copied from its parent at
 // the persistence stage, never from inference) or an auto-increment
