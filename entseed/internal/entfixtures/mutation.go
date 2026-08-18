@@ -10,12 +10,17 @@ import (
 
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
+	"github.com/danellalc/autoseed/entseed/internal/entfixtures/assignment"
+	"github.com/danellalc/autoseed/entseed/internal/entfixtures/course"
 	"github.com/danellalc/autoseed/entseed/internal/entfixtures/customer"
 	"github.com/danellalc/autoseed/entseed/internal/entfixtures/employee"
+	"github.com/danellalc/autoseed/entseed/internal/entfixtures/invoice"
 	"github.com/danellalc/autoseed/entseed/internal/entfixtures/order"
 	"github.com/danellalc/autoseed/entseed/internal/entfixtures/predicate"
 	"github.com/danellalc/autoseed/entseed/internal/entfixtures/product"
+	"github.com/danellalc/autoseed/entseed/internal/entfixtures/student"
 	"github.com/danellalc/autoseed/entseed/internal/entfixtures/tag"
+	"github.com/danellalc/autoseed/entseed/internal/entfixtures/teacher"
 )
 
 const (
@@ -27,12 +32,823 @@ const (
 	OpUpdateOne = ent.OpUpdateOne
 
 	// Node types.
-	TypeCustomer = "Customer"
-	TypeEmployee = "Employee"
-	TypeOrder    = "Order"
-	TypeProduct  = "Product"
-	TypeTag      = "Tag"
+	TypeAssignment = "Assignment"
+	TypeCourse     = "Course"
+	TypeCustomer   = "Customer"
+	TypeEmployee   = "Employee"
+	TypeInvoice    = "Invoice"
+	TypeOrder      = "Order"
+	TypeProduct    = "Product"
+	TypeStudent    = "Student"
+	TypeTag        = "Tag"
+	TypeTeacher    = "Teacher"
 )
+
+// AssignmentMutation represents an operation that mutates the Assignment nodes in the graph.
+type AssignmentMutation struct {
+	config
+	op             Op
+	typ            string
+	id             *int
+	clearedFields  map[string]struct{}
+	student        *int
+	clearedstudent bool
+	course         *int
+	clearedcourse  bool
+	teacher        *int
+	clearedteacher bool
+	done           bool
+	oldValue       func(context.Context) (*Assignment, error)
+	predicates     []predicate.Assignment
+}
+
+var _ ent.Mutation = (*AssignmentMutation)(nil)
+
+// assignmentOption allows management of the mutation configuration using functional options.
+type assignmentOption func(*AssignmentMutation)
+
+// newAssignmentMutation creates new mutation for the Assignment entity.
+func newAssignmentMutation(c config, op Op, opts ...assignmentOption) *AssignmentMutation {
+	m := &AssignmentMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeAssignment,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withAssignmentID sets the ID field of the mutation.
+func withAssignmentID(id int) assignmentOption {
+	return func(m *AssignmentMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *Assignment
+		)
+		m.oldValue = func(ctx context.Context) (*Assignment, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().Assignment.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withAssignment sets the old Assignment of the mutation.
+func withAssignment(node *Assignment) assignmentOption {
+	return func(m *AssignmentMutation) {
+		m.oldValue = func(context.Context) (*Assignment, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m AssignmentMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m AssignmentMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("entfixtures: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *AssignmentMutation) ID() (id int, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *AssignmentMutation) IDs(ctx context.Context) ([]int, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().Assignment.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetStudentID sets the "student" edge to the Student entity by id.
+func (m *AssignmentMutation) SetStudentID(id int) {
+	m.student = &id
+}
+
+// ClearStudent clears the "student" edge to the Student entity.
+func (m *AssignmentMutation) ClearStudent() {
+	m.clearedstudent = true
+}
+
+// StudentCleared reports if the "student" edge to the Student entity was cleared.
+func (m *AssignmentMutation) StudentCleared() bool {
+	return m.clearedstudent
+}
+
+// StudentID returns the "student" edge ID in the mutation.
+func (m *AssignmentMutation) StudentID() (id int, exists bool) {
+	if m.student != nil {
+		return *m.student, true
+	}
+	return
+}
+
+// StudentIDs returns the "student" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// StudentID instead. It exists only for internal usage by the builders.
+func (m *AssignmentMutation) StudentIDs() (ids []int) {
+	if id := m.student; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetStudent resets all changes to the "student" edge.
+func (m *AssignmentMutation) ResetStudent() {
+	m.student = nil
+	m.clearedstudent = false
+}
+
+// SetCourseID sets the "course" edge to the Course entity by id.
+func (m *AssignmentMutation) SetCourseID(id int) {
+	m.course = &id
+}
+
+// ClearCourse clears the "course" edge to the Course entity.
+func (m *AssignmentMutation) ClearCourse() {
+	m.clearedcourse = true
+}
+
+// CourseCleared reports if the "course" edge to the Course entity was cleared.
+func (m *AssignmentMutation) CourseCleared() bool {
+	return m.clearedcourse
+}
+
+// CourseID returns the "course" edge ID in the mutation.
+func (m *AssignmentMutation) CourseID() (id int, exists bool) {
+	if m.course != nil {
+		return *m.course, true
+	}
+	return
+}
+
+// CourseIDs returns the "course" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// CourseID instead. It exists only for internal usage by the builders.
+func (m *AssignmentMutation) CourseIDs() (ids []int) {
+	if id := m.course; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetCourse resets all changes to the "course" edge.
+func (m *AssignmentMutation) ResetCourse() {
+	m.course = nil
+	m.clearedcourse = false
+}
+
+// SetTeacherID sets the "teacher" edge to the Teacher entity by id.
+func (m *AssignmentMutation) SetTeacherID(id int) {
+	m.teacher = &id
+}
+
+// ClearTeacher clears the "teacher" edge to the Teacher entity.
+func (m *AssignmentMutation) ClearTeacher() {
+	m.clearedteacher = true
+}
+
+// TeacherCleared reports if the "teacher" edge to the Teacher entity was cleared.
+func (m *AssignmentMutation) TeacherCleared() bool {
+	return m.clearedteacher
+}
+
+// TeacherID returns the "teacher" edge ID in the mutation.
+func (m *AssignmentMutation) TeacherID() (id int, exists bool) {
+	if m.teacher != nil {
+		return *m.teacher, true
+	}
+	return
+}
+
+// TeacherIDs returns the "teacher" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// TeacherID instead. It exists only for internal usage by the builders.
+func (m *AssignmentMutation) TeacherIDs() (ids []int) {
+	if id := m.teacher; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetTeacher resets all changes to the "teacher" edge.
+func (m *AssignmentMutation) ResetTeacher() {
+	m.teacher = nil
+	m.clearedteacher = false
+}
+
+// Where appends a list predicates to the AssignmentMutation builder.
+func (m *AssignmentMutation) Where(ps ...predicate.Assignment) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the AssignmentMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *AssignmentMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.Assignment, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *AssignmentMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *AssignmentMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (Assignment).
+func (m *AssignmentMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *AssignmentMutation) Fields() []string {
+	fields := make([]string, 0, 0)
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *AssignmentMutation) Field(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *AssignmentMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	return nil, fmt.Errorf("unknown Assignment field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *AssignmentMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown Assignment field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *AssignmentMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *AssignmentMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *AssignmentMutation) AddField(name string, value ent.Value) error {
+	return fmt.Errorf("unknown Assignment numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *AssignmentMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *AssignmentMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *AssignmentMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown Assignment nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *AssignmentMutation) ResetField(name string) error {
+	return fmt.Errorf("unknown Assignment field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *AssignmentMutation) AddedEdges() []string {
+	edges := make([]string, 0, 3)
+	if m.student != nil {
+		edges = append(edges, assignment.EdgeStudent)
+	}
+	if m.course != nil {
+		edges = append(edges, assignment.EdgeCourse)
+	}
+	if m.teacher != nil {
+		edges = append(edges, assignment.EdgeTeacher)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *AssignmentMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case assignment.EdgeStudent:
+		if id := m.student; id != nil {
+			return []ent.Value{*id}
+		}
+	case assignment.EdgeCourse:
+		if id := m.course; id != nil {
+			return []ent.Value{*id}
+		}
+	case assignment.EdgeTeacher:
+		if id := m.teacher; id != nil {
+			return []ent.Value{*id}
+		}
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *AssignmentMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 3)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *AssignmentMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *AssignmentMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 3)
+	if m.clearedstudent {
+		edges = append(edges, assignment.EdgeStudent)
+	}
+	if m.clearedcourse {
+		edges = append(edges, assignment.EdgeCourse)
+	}
+	if m.clearedteacher {
+		edges = append(edges, assignment.EdgeTeacher)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *AssignmentMutation) EdgeCleared(name string) bool {
+	switch name {
+	case assignment.EdgeStudent:
+		return m.clearedstudent
+	case assignment.EdgeCourse:
+		return m.clearedcourse
+	case assignment.EdgeTeacher:
+		return m.clearedteacher
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *AssignmentMutation) ClearEdge(name string) error {
+	switch name {
+	case assignment.EdgeStudent:
+		m.ClearStudent()
+		return nil
+	case assignment.EdgeCourse:
+		m.ClearCourse()
+		return nil
+	case assignment.EdgeTeacher:
+		m.ClearTeacher()
+		return nil
+	}
+	return fmt.Errorf("unknown Assignment unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *AssignmentMutation) ResetEdge(name string) error {
+	switch name {
+	case assignment.EdgeStudent:
+		m.ResetStudent()
+		return nil
+	case assignment.EdgeCourse:
+		m.ResetCourse()
+		return nil
+	case assignment.EdgeTeacher:
+		m.ResetTeacher()
+		return nil
+	}
+	return fmt.Errorf("unknown Assignment edge %s", name)
+}
+
+// CourseMutation represents an operation that mutates the Course nodes in the graph.
+type CourseMutation struct {
+	config
+	op                 Op
+	typ                string
+	id                 *int
+	clearedFields      map[string]struct{}
+	assignments        map[int]struct{}
+	removedassignments map[int]struct{}
+	clearedassignments bool
+	done               bool
+	oldValue           func(context.Context) (*Course, error)
+	predicates         []predicate.Course
+}
+
+var _ ent.Mutation = (*CourseMutation)(nil)
+
+// courseOption allows management of the mutation configuration using functional options.
+type courseOption func(*CourseMutation)
+
+// newCourseMutation creates new mutation for the Course entity.
+func newCourseMutation(c config, op Op, opts ...courseOption) *CourseMutation {
+	m := &CourseMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeCourse,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withCourseID sets the ID field of the mutation.
+func withCourseID(id int) courseOption {
+	return func(m *CourseMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *Course
+		)
+		m.oldValue = func(ctx context.Context) (*Course, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().Course.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withCourse sets the old Course of the mutation.
+func withCourse(node *Course) courseOption {
+	return func(m *CourseMutation) {
+		m.oldValue = func(context.Context) (*Course, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m CourseMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m CourseMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("entfixtures: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *CourseMutation) ID() (id int, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *CourseMutation) IDs(ctx context.Context) ([]int, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().Course.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// AddAssignmentIDs adds the "assignments" edge to the Assignment entity by ids.
+func (m *CourseMutation) AddAssignmentIDs(ids ...int) {
+	if m.assignments == nil {
+		m.assignments = make(map[int]struct{})
+	}
+	for i := range ids {
+		m.assignments[ids[i]] = struct{}{}
+	}
+}
+
+// ClearAssignments clears the "assignments" edge to the Assignment entity.
+func (m *CourseMutation) ClearAssignments() {
+	m.clearedassignments = true
+}
+
+// AssignmentsCleared reports if the "assignments" edge to the Assignment entity was cleared.
+func (m *CourseMutation) AssignmentsCleared() bool {
+	return m.clearedassignments
+}
+
+// RemoveAssignmentIDs removes the "assignments" edge to the Assignment entity by IDs.
+func (m *CourseMutation) RemoveAssignmentIDs(ids ...int) {
+	if m.removedassignments == nil {
+		m.removedassignments = make(map[int]struct{})
+	}
+	for i := range ids {
+		delete(m.assignments, ids[i])
+		m.removedassignments[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedAssignments returns the removed IDs of the "assignments" edge to the Assignment entity.
+func (m *CourseMutation) RemovedAssignmentsIDs() (ids []int) {
+	for id := range m.removedassignments {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// AssignmentsIDs returns the "assignments" edge IDs in the mutation.
+func (m *CourseMutation) AssignmentsIDs() (ids []int) {
+	for id := range m.assignments {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetAssignments resets all changes to the "assignments" edge.
+func (m *CourseMutation) ResetAssignments() {
+	m.assignments = nil
+	m.clearedassignments = false
+	m.removedassignments = nil
+}
+
+// Where appends a list predicates to the CourseMutation builder.
+func (m *CourseMutation) Where(ps ...predicate.Course) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the CourseMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *CourseMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.Course, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *CourseMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *CourseMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (Course).
+func (m *CourseMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *CourseMutation) Fields() []string {
+	fields := make([]string, 0, 0)
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *CourseMutation) Field(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *CourseMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	return nil, fmt.Errorf("unknown Course field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *CourseMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown Course field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *CourseMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *CourseMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *CourseMutation) AddField(name string, value ent.Value) error {
+	return fmt.Errorf("unknown Course numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *CourseMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *CourseMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *CourseMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown Course nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *CourseMutation) ResetField(name string) error {
+	return fmt.Errorf("unknown Course field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *CourseMutation) AddedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.assignments != nil {
+		edges = append(edges, course.EdgeAssignments)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *CourseMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case course.EdgeAssignments:
+		ids := make([]ent.Value, 0, len(m.assignments))
+		for id := range m.assignments {
+			ids = append(ids, id)
+		}
+		return ids
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *CourseMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.removedassignments != nil {
+		edges = append(edges, course.EdgeAssignments)
+	}
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *CourseMutation) RemovedIDs(name string) []ent.Value {
+	switch name {
+	case course.EdgeAssignments:
+		ids := make([]ent.Value, 0, len(m.removedassignments))
+		for id := range m.removedassignments {
+			ids = append(ids, id)
+		}
+		return ids
+	}
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *CourseMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.clearedassignments {
+		edges = append(edges, course.EdgeAssignments)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *CourseMutation) EdgeCleared(name string) bool {
+	switch name {
+	case course.EdgeAssignments:
+		return m.clearedassignments
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *CourseMutation) ClearEdge(name string) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown Course unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *CourseMutation) ResetEdge(name string) error {
+	switch name {
+	case course.EdgeAssignments:
+		m.ResetAssignments()
+		return nil
+	}
+	return fmt.Errorf("unknown Course edge %s", name)
+}
 
 // CustomerMutation represents an operation that mutates the Customer nodes in the graph.
 type CustomerMutation struct {
@@ -867,6 +1683,386 @@ func (m *EmployeeMutation) ResetEdge(name string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown Employee edge %s", name)
+}
+
+// InvoiceMutation represents an operation that mutates the Invoice nodes in the graph.
+type InvoiceMutation struct {
+	config
+	op            Op
+	typ           string
+	id            *int
+	series        *string
+	number        *string
+	clearedFields map[string]struct{}
+	done          bool
+	oldValue      func(context.Context) (*Invoice, error)
+	predicates    []predicate.Invoice
+}
+
+var _ ent.Mutation = (*InvoiceMutation)(nil)
+
+// invoiceOption allows management of the mutation configuration using functional options.
+type invoiceOption func(*InvoiceMutation)
+
+// newInvoiceMutation creates new mutation for the Invoice entity.
+func newInvoiceMutation(c config, op Op, opts ...invoiceOption) *InvoiceMutation {
+	m := &InvoiceMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeInvoice,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withInvoiceID sets the ID field of the mutation.
+func withInvoiceID(id int) invoiceOption {
+	return func(m *InvoiceMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *Invoice
+		)
+		m.oldValue = func(ctx context.Context) (*Invoice, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().Invoice.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withInvoice sets the old Invoice of the mutation.
+func withInvoice(node *Invoice) invoiceOption {
+	return func(m *InvoiceMutation) {
+		m.oldValue = func(context.Context) (*Invoice, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m InvoiceMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m InvoiceMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("entfixtures: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *InvoiceMutation) ID() (id int, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *InvoiceMutation) IDs(ctx context.Context) ([]int, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().Invoice.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetSeries sets the "series" field.
+func (m *InvoiceMutation) SetSeries(s string) {
+	m.series = &s
+}
+
+// Series returns the value of the "series" field in the mutation.
+func (m *InvoiceMutation) Series() (r string, exists bool) {
+	v := m.series
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSeries returns the old "series" field's value of the Invoice entity.
+// If the Invoice object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *InvoiceMutation) OldSeries(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSeries is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSeries requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSeries: %w", err)
+	}
+	return oldValue.Series, nil
+}
+
+// ResetSeries resets all changes to the "series" field.
+func (m *InvoiceMutation) ResetSeries() {
+	m.series = nil
+}
+
+// SetNumber sets the "number" field.
+func (m *InvoiceMutation) SetNumber(s string) {
+	m.number = &s
+}
+
+// Number returns the value of the "number" field in the mutation.
+func (m *InvoiceMutation) Number() (r string, exists bool) {
+	v := m.number
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldNumber returns the old "number" field's value of the Invoice entity.
+// If the Invoice object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *InvoiceMutation) OldNumber(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldNumber is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldNumber requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldNumber: %w", err)
+	}
+	return oldValue.Number, nil
+}
+
+// ResetNumber resets all changes to the "number" field.
+func (m *InvoiceMutation) ResetNumber() {
+	m.number = nil
+}
+
+// Where appends a list predicates to the InvoiceMutation builder.
+func (m *InvoiceMutation) Where(ps ...predicate.Invoice) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the InvoiceMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *InvoiceMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.Invoice, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *InvoiceMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *InvoiceMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (Invoice).
+func (m *InvoiceMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *InvoiceMutation) Fields() []string {
+	fields := make([]string, 0, 2)
+	if m.series != nil {
+		fields = append(fields, invoice.FieldSeries)
+	}
+	if m.number != nil {
+		fields = append(fields, invoice.FieldNumber)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *InvoiceMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case invoice.FieldSeries:
+		return m.Series()
+	case invoice.FieldNumber:
+		return m.Number()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *InvoiceMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case invoice.FieldSeries:
+		return m.OldSeries(ctx)
+	case invoice.FieldNumber:
+		return m.OldNumber(ctx)
+	}
+	return nil, fmt.Errorf("unknown Invoice field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *InvoiceMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case invoice.FieldSeries:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSeries(v)
+		return nil
+	case invoice.FieldNumber:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetNumber(v)
+		return nil
+	}
+	return fmt.Errorf("unknown Invoice field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *InvoiceMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *InvoiceMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *InvoiceMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown Invoice numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *InvoiceMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *InvoiceMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *InvoiceMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown Invoice nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *InvoiceMutation) ResetField(name string) error {
+	switch name {
+	case invoice.FieldSeries:
+		m.ResetSeries()
+		return nil
+	case invoice.FieldNumber:
+		m.ResetNumber()
+		return nil
+	}
+	return fmt.Errorf("unknown Invoice field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *InvoiceMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *InvoiceMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *InvoiceMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *InvoiceMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *InvoiceMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *InvoiceMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *InvoiceMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown Invoice unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *InvoiceMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown Invoice edge %s", name)
 }
 
 // OrderMutation represents an operation that mutates the Order nodes in the graph.
@@ -1735,6 +2931,363 @@ func (m *ProductMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown Product edge %s", name)
 }
 
+// StudentMutation represents an operation that mutates the Student nodes in the graph.
+type StudentMutation struct {
+	config
+	op                 Op
+	typ                string
+	id                 *int
+	clearedFields      map[string]struct{}
+	assignments        map[int]struct{}
+	removedassignments map[int]struct{}
+	clearedassignments bool
+	done               bool
+	oldValue           func(context.Context) (*Student, error)
+	predicates         []predicate.Student
+}
+
+var _ ent.Mutation = (*StudentMutation)(nil)
+
+// studentOption allows management of the mutation configuration using functional options.
+type studentOption func(*StudentMutation)
+
+// newStudentMutation creates new mutation for the Student entity.
+func newStudentMutation(c config, op Op, opts ...studentOption) *StudentMutation {
+	m := &StudentMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeStudent,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withStudentID sets the ID field of the mutation.
+func withStudentID(id int) studentOption {
+	return func(m *StudentMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *Student
+		)
+		m.oldValue = func(ctx context.Context) (*Student, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().Student.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withStudent sets the old Student of the mutation.
+func withStudent(node *Student) studentOption {
+	return func(m *StudentMutation) {
+		m.oldValue = func(context.Context) (*Student, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m StudentMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m StudentMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("entfixtures: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *StudentMutation) ID() (id int, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *StudentMutation) IDs(ctx context.Context) ([]int, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().Student.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// AddAssignmentIDs adds the "assignments" edge to the Assignment entity by ids.
+func (m *StudentMutation) AddAssignmentIDs(ids ...int) {
+	if m.assignments == nil {
+		m.assignments = make(map[int]struct{})
+	}
+	for i := range ids {
+		m.assignments[ids[i]] = struct{}{}
+	}
+}
+
+// ClearAssignments clears the "assignments" edge to the Assignment entity.
+func (m *StudentMutation) ClearAssignments() {
+	m.clearedassignments = true
+}
+
+// AssignmentsCleared reports if the "assignments" edge to the Assignment entity was cleared.
+func (m *StudentMutation) AssignmentsCleared() bool {
+	return m.clearedassignments
+}
+
+// RemoveAssignmentIDs removes the "assignments" edge to the Assignment entity by IDs.
+func (m *StudentMutation) RemoveAssignmentIDs(ids ...int) {
+	if m.removedassignments == nil {
+		m.removedassignments = make(map[int]struct{})
+	}
+	for i := range ids {
+		delete(m.assignments, ids[i])
+		m.removedassignments[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedAssignments returns the removed IDs of the "assignments" edge to the Assignment entity.
+func (m *StudentMutation) RemovedAssignmentsIDs() (ids []int) {
+	for id := range m.removedassignments {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// AssignmentsIDs returns the "assignments" edge IDs in the mutation.
+func (m *StudentMutation) AssignmentsIDs() (ids []int) {
+	for id := range m.assignments {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetAssignments resets all changes to the "assignments" edge.
+func (m *StudentMutation) ResetAssignments() {
+	m.assignments = nil
+	m.clearedassignments = false
+	m.removedassignments = nil
+}
+
+// Where appends a list predicates to the StudentMutation builder.
+func (m *StudentMutation) Where(ps ...predicate.Student) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the StudentMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *StudentMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.Student, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *StudentMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *StudentMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (Student).
+func (m *StudentMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *StudentMutation) Fields() []string {
+	fields := make([]string, 0, 0)
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *StudentMutation) Field(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *StudentMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	return nil, fmt.Errorf("unknown Student field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *StudentMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown Student field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *StudentMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *StudentMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *StudentMutation) AddField(name string, value ent.Value) error {
+	return fmt.Errorf("unknown Student numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *StudentMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *StudentMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *StudentMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown Student nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *StudentMutation) ResetField(name string) error {
+	return fmt.Errorf("unknown Student field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *StudentMutation) AddedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.assignments != nil {
+		edges = append(edges, student.EdgeAssignments)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *StudentMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case student.EdgeAssignments:
+		ids := make([]ent.Value, 0, len(m.assignments))
+		for id := range m.assignments {
+			ids = append(ids, id)
+		}
+		return ids
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *StudentMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.removedassignments != nil {
+		edges = append(edges, student.EdgeAssignments)
+	}
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *StudentMutation) RemovedIDs(name string) []ent.Value {
+	switch name {
+	case student.EdgeAssignments:
+		ids := make([]ent.Value, 0, len(m.removedassignments))
+		for id := range m.removedassignments {
+			ids = append(ids, id)
+		}
+		return ids
+	}
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *StudentMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.clearedassignments {
+		edges = append(edges, student.EdgeAssignments)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *StudentMutation) EdgeCleared(name string) bool {
+	switch name {
+	case student.EdgeAssignments:
+		return m.clearedassignments
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *StudentMutation) ClearEdge(name string) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown Student unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *StudentMutation) ResetEdge(name string) error {
+	switch name {
+	case student.EdgeAssignments:
+		m.ResetAssignments()
+		return nil
+	}
+	return fmt.Errorf("unknown Student edge %s", name)
+}
+
 // TagMutation represents an operation that mutates the Tag nodes in the graph.
 type TagMutation struct {
 	config
@@ -2152,4 +3705,361 @@ func (m *TagMutation) ResetEdge(name string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown Tag edge %s", name)
+}
+
+// TeacherMutation represents an operation that mutates the Teacher nodes in the graph.
+type TeacherMutation struct {
+	config
+	op                 Op
+	typ                string
+	id                 *int
+	clearedFields      map[string]struct{}
+	assignments        map[int]struct{}
+	removedassignments map[int]struct{}
+	clearedassignments bool
+	done               bool
+	oldValue           func(context.Context) (*Teacher, error)
+	predicates         []predicate.Teacher
+}
+
+var _ ent.Mutation = (*TeacherMutation)(nil)
+
+// teacherOption allows management of the mutation configuration using functional options.
+type teacherOption func(*TeacherMutation)
+
+// newTeacherMutation creates new mutation for the Teacher entity.
+func newTeacherMutation(c config, op Op, opts ...teacherOption) *TeacherMutation {
+	m := &TeacherMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeTeacher,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withTeacherID sets the ID field of the mutation.
+func withTeacherID(id int) teacherOption {
+	return func(m *TeacherMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *Teacher
+		)
+		m.oldValue = func(ctx context.Context) (*Teacher, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().Teacher.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withTeacher sets the old Teacher of the mutation.
+func withTeacher(node *Teacher) teacherOption {
+	return func(m *TeacherMutation) {
+		m.oldValue = func(context.Context) (*Teacher, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m TeacherMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m TeacherMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("entfixtures: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *TeacherMutation) ID() (id int, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *TeacherMutation) IDs(ctx context.Context) ([]int, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().Teacher.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// AddAssignmentIDs adds the "assignments" edge to the Assignment entity by ids.
+func (m *TeacherMutation) AddAssignmentIDs(ids ...int) {
+	if m.assignments == nil {
+		m.assignments = make(map[int]struct{})
+	}
+	for i := range ids {
+		m.assignments[ids[i]] = struct{}{}
+	}
+}
+
+// ClearAssignments clears the "assignments" edge to the Assignment entity.
+func (m *TeacherMutation) ClearAssignments() {
+	m.clearedassignments = true
+}
+
+// AssignmentsCleared reports if the "assignments" edge to the Assignment entity was cleared.
+func (m *TeacherMutation) AssignmentsCleared() bool {
+	return m.clearedassignments
+}
+
+// RemoveAssignmentIDs removes the "assignments" edge to the Assignment entity by IDs.
+func (m *TeacherMutation) RemoveAssignmentIDs(ids ...int) {
+	if m.removedassignments == nil {
+		m.removedassignments = make(map[int]struct{})
+	}
+	for i := range ids {
+		delete(m.assignments, ids[i])
+		m.removedassignments[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedAssignments returns the removed IDs of the "assignments" edge to the Assignment entity.
+func (m *TeacherMutation) RemovedAssignmentsIDs() (ids []int) {
+	for id := range m.removedassignments {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// AssignmentsIDs returns the "assignments" edge IDs in the mutation.
+func (m *TeacherMutation) AssignmentsIDs() (ids []int) {
+	for id := range m.assignments {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetAssignments resets all changes to the "assignments" edge.
+func (m *TeacherMutation) ResetAssignments() {
+	m.assignments = nil
+	m.clearedassignments = false
+	m.removedassignments = nil
+}
+
+// Where appends a list predicates to the TeacherMutation builder.
+func (m *TeacherMutation) Where(ps ...predicate.Teacher) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the TeacherMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *TeacherMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.Teacher, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *TeacherMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *TeacherMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (Teacher).
+func (m *TeacherMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *TeacherMutation) Fields() []string {
+	fields := make([]string, 0, 0)
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *TeacherMutation) Field(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *TeacherMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	return nil, fmt.Errorf("unknown Teacher field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *TeacherMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown Teacher field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *TeacherMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *TeacherMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *TeacherMutation) AddField(name string, value ent.Value) error {
+	return fmt.Errorf("unknown Teacher numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *TeacherMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *TeacherMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *TeacherMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown Teacher nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *TeacherMutation) ResetField(name string) error {
+	return fmt.Errorf("unknown Teacher field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *TeacherMutation) AddedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.assignments != nil {
+		edges = append(edges, teacher.EdgeAssignments)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *TeacherMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case teacher.EdgeAssignments:
+		ids := make([]ent.Value, 0, len(m.assignments))
+		for id := range m.assignments {
+			ids = append(ids, id)
+		}
+		return ids
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *TeacherMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.removedassignments != nil {
+		edges = append(edges, teacher.EdgeAssignments)
+	}
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *TeacherMutation) RemovedIDs(name string) []ent.Value {
+	switch name {
+	case teacher.EdgeAssignments:
+		ids := make([]ent.Value, 0, len(m.removedassignments))
+		for id := range m.removedassignments {
+			ids = append(ids, id)
+		}
+		return ids
+	}
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *TeacherMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.clearedassignments {
+		edges = append(edges, teacher.EdgeAssignments)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *TeacherMutation) EdgeCleared(name string) bool {
+	switch name {
+	case teacher.EdgeAssignments:
+		return m.clearedassignments
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *TeacherMutation) ClearEdge(name string) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown Teacher unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *TeacherMutation) ResetEdge(name string) error {
+	switch name {
+	case teacher.EdgeAssignments:
+		m.ResetAssignments()
+		return nil
+	}
+	return fmt.Errorf("unknown Teacher edge %s", name)
 }

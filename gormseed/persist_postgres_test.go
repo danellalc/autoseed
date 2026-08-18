@@ -254,6 +254,109 @@ func TestSeed_Postgres_ManyToMany(t *testing.T) {
 	}
 }
 
+type PGInvoice struct {
+	ID     uint   `gorm:"primaryKey"`
+	Series string `gorm:"uniqueIndex:idx_pg_invoice_series_number;size:2"`
+	Number string `gorm:"uniqueIndex:idx_pg_invoice_series_number;size:2"`
+}
+
+// TestSeed_Postgres_CompositeUniqueConstraint guards the end-to-end path
+// for a composite unique index: Series and Number carry no unique
+// constraint on their own, only together, and Postgres itself enforces
+// the real index AutoMigrate creates for the uniqueIndex tag. Both
+// fields are deliberately truncated to 2 characters so their generated
+// values collide often at scale=100 -- with a wide-open domain the
+// composite dedup would almost never actually be exercised, and this
+// test would pass even if EnsureUnique's UniqueConstraints wiring were
+// deleted entirely.
+func TestSeed_Postgres_CompositeUniqueConstraint(t *testing.T) {
+	db := postgresDB(t)
+	models := []any{&PGInvoice{}}
+	if err := db.AutoMigrate(models...); err != nil {
+		t.Fatalf("AutoMigrate: %v", err)
+	}
+
+	if err := gormseed.Seed(context.Background(), db, models, autoseed.WithSeed(7), autoseed.WithScale(100)); err != nil {
+		t.Fatalf("Seed: %v", err)
+	}
+
+	var invoices []PGInvoice
+	if err := db.Find(&invoices).Error; err != nil {
+		t.Fatalf("querying invoices: %v", err)
+	}
+	if len(invoices) != 100 {
+		t.Fatalf("Invoice count = %d, want 100", len(invoices))
+	}
+
+	seen := make(map[string]bool, len(invoices))
+	for _, inv := range invoices {
+		key := inv.Series + "|" + inv.Number
+		if seen[key] {
+			t.Fatalf("duplicate (Series, Number) = (%q, %q), want the composite constraint enforced", inv.Series, inv.Number)
+		}
+		seen[key] = true
+	}
+}
+
+type PGStudent struct {
+	ID uint `gorm:"primaryKey"`
+}
+
+type PGCourse struct {
+	ID uint `gorm:"primaryKey"`
+}
+
+type PGTeacher struct {
+	ID uint `gorm:"primaryKey"`
+}
+
+// PGStudentCourseTeacher's primary key is all three of its own foreign
+// keys together: a ternary attributed join, one participant beyond the
+// pairwise join tables the cap already handled before this session.
+type PGStudentCourseTeacher struct {
+	StudentID uint `gorm:"primaryKey"`
+	CourseID  uint `gorm:"primaryKey"`
+	TeacherID uint `gorm:"primaryKey"`
+	Student   PGStudent
+	Course    PGCourse
+	Teacher   PGTeacher
+}
+
+// TestSeed_Postgres_TernaryJunction guards the N-ary generalization of the
+// junction cap end to end: if PlanGeneration ever asked for more
+// (Student, Course, Teacher) combinations than the driver's non-driver
+// participants can jointly supply, Postgres's own composite primary key
+// would reject the duplicate triple with a real constraint-violation
+// error, not silently store it.
+func TestSeed_Postgres_TernaryJunction(t *testing.T) {
+	db := postgresDB(t)
+	models := []any{&PGStudent{}, &PGCourse{}, &PGTeacher{}, &PGStudentCourseTeacher{}}
+	if err := db.AutoMigrate(models...); err != nil {
+		t.Fatalf("AutoMigrate: %v", err)
+	}
+
+	if err := gormseed.Seed(context.Background(), db, models, autoseed.WithSeed(11), autoseed.WithScale(6)); err != nil {
+		t.Fatalf("Seed: %v", err)
+	}
+
+	var assignments []PGStudentCourseTeacher
+	if err := db.Find(&assignments).Error; err != nil {
+		t.Fatalf("querying assignments: %v", err)
+	}
+	if len(assignments) == 0 {
+		t.Fatal("PGStudentCourseTeacher is empty, want at least some rows")
+	}
+
+	seen := make(map[[3]uint]bool, len(assignments))
+	for _, a := range assignments {
+		key := [3]uint{a.StudentID, a.CourseID, a.TeacherID}
+		if seen[key] {
+			t.Fatalf("duplicate (Student, Course, Teacher) = %v, want the composite primary key enforced", key)
+		}
+		seen[key] = true
+	}
+}
+
 // TestSeed_Postgres_Deterministic compares actual generated field values
 // across every entity in the model, not just row counts — a map-iteration
 // bug could leave row counts (computed purely from PlanGeneration)

@@ -6,11 +6,20 @@ import (
 	"entgo.io/ent/dialect/sql"
 )
 
+// Assignment is the predicate function for assignment builders.
+type Assignment func(*sql.Selector)
+
+// Course is the predicate function for course builders.
+type Course func(*sql.Selector)
+
 // Customer is the predicate function for customer builders.
 type Customer func(*sql.Selector)
 
 // Employee is the predicate function for employee builders.
 type Employee func(*sql.Selector)
+
+// Invoice is the predicate function for invoice builders.
+type Invoice func(*sql.Selector)
 
 // Order is the predicate function for order builders.
 type Order func(*sql.Selector)
@@ -18,5 +27,11 @@ type Order func(*sql.Selector)
 // Product is the predicate function for product builders.
 type Product func(*sql.Selector)
 
+// Student is the predicate function for student builders.
+type Student func(*sql.Selector)
+
 // Tag is the predicate function for tag builders.
 type Tag func(*sql.Selector)
+
+// Teacher is the predicate function for teacher builders.
+type Teacher func(*sql.Selector)

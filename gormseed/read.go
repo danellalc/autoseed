@@ -218,7 +218,30 @@ func buildEntity(s *schema.Schema, inferred []inferredReference) (autoseed.Entit
 		return strings.Join(refs[i].Fields, "+") < strings.Join(refs[j].Fields, "+")
 	})
 
-	return autoseed.Entity{Name: s.Name, Fields: fields, References: refs}, nil
+	return autoseed.Entity{Name: s.Name, Fields: fields, References: refs, UniqueConstraints: uniqueConstraints(s)}, nil
+}
+
+// uniqueConstraints returns s's composite unique indexes — a
+// gorm:"uniqueIndex:name" tag shared by two or more fields — each as a
+// field-name tuple in the index's own column order. A single-column
+// unique index is already carried on that Field's own Unique flag instead
+// and is not repeated here.
+func uniqueConstraints(s *schema.Schema) [][]string {
+	var constraints [][]string
+	for _, idx := range s.ParseIndexes() {
+		if idx.Class != "UNIQUE" || len(idx.Fields) < 2 {
+			continue
+		}
+		fields := make([]string, len(idx.Fields))
+		for i, f := range idx.Fields {
+			fields[i] = f.Name
+		}
+		constraints = append(constraints, fields)
+	}
+	sort.Slice(constraints, func(i, j int) bool {
+		return strings.Join(constraints[i], "+") < strings.Join(constraints[j], "+")
+	})
+	return constraints
 }
 
 func referenceKey(ref autoseed.Reference) string {

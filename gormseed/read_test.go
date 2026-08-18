@@ -97,6 +97,22 @@ type ChildAB struct {
 	Target  TargetBA `gorm:"foreignKey:FA,FB;references:A,B"`
 }
 
+type Invoice struct {
+	ID     int    `gorm:"primaryKey"`
+	Series string `gorm:"uniqueIndex:idx_invoice_series_number"`
+	Number string `gorm:"uniqueIndex:idx_invoice_series_number"`
+}
+
+// PriorityOrdered declares its composite unique index fields out of
+// struct-declaration order (Second before First) via an explicit
+// priority tag, so the constraint's own Fields order must follow
+// priority, not declaration order.
+type PriorityOrdered struct {
+	ID     int    `gorm:"primaryKey"`
+	Second string `gorm:"uniqueIndex:idx_priority_ordered,priority:2"`
+	First  string `gorm:"uniqueIndex:idx_priority_ordered,priority:1"`
+}
+
 type Profile struct {
 	ID     int `gorm:"primaryKey"`
 	UserID int
@@ -411,6 +427,41 @@ func TestRead_FieldUnique(t *testing.T) {
 	}
 }
 
+func TestRead_CompositeUniqueConstraint(t *testing.T) {
+	entities, _, _, err := read(nil, []any{&Invoice{}})
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+
+	invoice := entityNamed(t, entities, "Invoice")
+	if len(invoice.UniqueConstraints) != 1 {
+		t.Fatalf("UniqueConstraints = %v, want exactly one composite constraint", invoice.UniqueConstraints)
+	}
+	if !equalStrings(invoice.UniqueConstraints[0], []string{"Series", "Number"}) {
+		t.Fatalf("UniqueConstraints[0] = %v, want [Series Number]", invoice.UniqueConstraints[0])
+	}
+
+	series := fieldNamed(t, invoice, "Series")
+	if series.Unique {
+		t.Fatal("Series alone must not be marked Field.Unique -- it is only unique combined with Number")
+	}
+}
+
+func TestRead_CompositeUniqueConstraintFollowsPriorityNotDeclarationOrder(t *testing.T) {
+	entities, _, _, err := read(nil, []any{&PriorityOrdered{}})
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+
+	entity := entityNamed(t, entities, "PriorityOrdered")
+	if len(entity.UniqueConstraints) != 1 {
+		t.Fatalf("UniqueConstraints = %v, want exactly one composite constraint", entity.UniqueConstraints)
+	}
+	if !equalStrings(entity.UniqueConstraints[0], []string{"First", "Second"}) {
+		t.Fatalf("UniqueConstraints[0] = %v, want [First Second] (priority order, not declaration order)", entity.UniqueConstraints[0])
+	}
+}
+
 func TestExplain_OmittedModelReturnsUnknownReference(t *testing.T) {
 	_, err := Explain(nil, []any{&Post{}})
 	if !errors.Is(err, autoseed.ErrUnknownReference) {
@@ -483,7 +534,7 @@ func TestRead_PropagatesParseError(t *testing.T) {
 }
 
 func TestRead_Deterministic(t *testing.T) {
-	models := []any{&Post{}, &Author{}, &Tag{}, &Video{}, &Comment{}, &Cart{}, &CartItem{}, &OrderLine{}, &Order{}, &Shipment{}}
+	models := []any{&Post{}, &Author{}, &Tag{}, &Video{}, &Comment{}, &Cart{}, &CartItem{}, &OrderLine{}, &Order{}, &Shipment{}, &Invoice{}}
 
 	first, _, firstSkipped, err := read(nil, models)
 	if err != nil {
@@ -534,8 +585,13 @@ func equalEntities(a, b []autoseed.Entity) bool {
 		if a[i].Name != b[i].Name {
 			return false
 		}
-		if len(a[i].Fields) != len(b[i].Fields) || len(a[i].References) != len(b[i].References) {
+		if len(a[i].Fields) != len(b[i].Fields) || len(a[i].References) != len(b[i].References) || len(a[i].UniqueConstraints) != len(b[i].UniqueConstraints) {
 			return false
+		}
+		for j := range a[i].UniqueConstraints {
+			if !equalStrings(a[i].UniqueConstraints[j], b[i].UniqueConstraints[j]) {
+				return false
+			}
 		}
 		for j := range a[i].Fields {
 			if a[i].Fields[j] != b[i].Fields[j] {

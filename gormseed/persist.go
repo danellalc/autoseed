@@ -133,7 +133,13 @@ func buildInstances(
 	driverRowOf := expandDriverRows(plan)
 	blockLocalOf := blockLocalIndices(plan)
 	driverKey := strings.Join(plan.DriverFields, "+")
-	junctionKey := strings.Join(plan.JunctionFields, "+")
+	junctionPositionOf := junctionPositions(plan)
+	rowsOf := func(target string) int {
+		if parent, ok := inserted[target]; ok {
+			return len(parent.instances)
+		}
+		return 0
+	}
 
 	instances := make([]any, len(rows))
 	for i, values := range rows {
@@ -147,6 +153,11 @@ func buildInstances(
 			if err := field.Set(ctx, instance, value); err != nil {
 				return nil, fmt.Errorf("gormseed: setting %s.%s: %w", entity.Name, fieldName, err)
 			}
+		}
+
+		var junctionIdx []int
+		if len(plan.JunctionParticipants) > 0 {
+			junctionIdx = autoseed.JunctionIndices(plan.JunctionParticipants, plan.Driver, driverRowOf[i], blockLocalOf[i], rowsOf)
 		}
 
 		for _, ref := range entity.References {
@@ -164,28 +175,10 @@ func buildInstances(
 			// driver and junction references the same Target, and only
 			// their Fields tell them apart.
 			parentIndex := i % len(parent.instances)
-			switch refKey {
-			case driverKey:
+			if refKey == driverKey {
 				parentIndex = driverRowOf[i]
-			case junctionKey:
-				// A junction row's non-driver parent must be distinct
-				// within its own driver row's block — reusing one would
-				// collide with a sibling row on the entity's own composite
-				// primary key. PlanGeneration already caps every block's
-				// length at the target's own row count, so a block-local,
-				// not global, index never needs to wrap mid-block.
-				n := len(parent.instances)
-				if ref.Target == plan.Driver {
-					// Self-referencing: offset past the driver row's own
-					// index so a row can never pair with itself.
-					// blockLocalOf[i] ranges over fewer values than n
-					// (junctionCap already reserved one slot for this),
-					// so the offset block of consecutive residues mod n
-					// never wraps back onto driverRowOf[i].
-					parentIndex = (blockLocalOf[i] + driverRowOf[i] + 1) % n
-				} else {
-					parentIndex = blockLocalOf[i] % n
-				}
+			} else if pos, ok := junctionPositionOf[refKey]; ok {
+				parentIndex = junctionIdx[pos]
 			}
 			if err := copyKey(ctx, parent.schema, reflect.ValueOf(parent.instances[parentIndex]).Elem(), entitySchema, instance, ref.Fields); err != nil {
 				return nil, err
@@ -195,6 +188,17 @@ func buildInstances(
 		instances[i] = instance.Addr().Interface()
 	}
 	return instances, nil
+}
+
+// junctionPositions maps each participant's own Fields key to its index
+// within plan.JunctionParticipants, so a reference on the entity can be
+// matched to the JunctionIndices slot computed for it.
+func junctionPositions(plan autoseed.EntityGenerationPlan) map[string]int {
+	positions := make(map[string]int, len(plan.JunctionParticipants))
+	for i, p := range plan.JunctionParticipants {
+		positions[strings.Join(p.Fields, "+")] = i
+	}
+	return positions
 }
 
 func referenceFieldSet(refs []autoseed.DeferredReference) map[string]bool {

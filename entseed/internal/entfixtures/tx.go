@@ -12,16 +12,26 @@ import (
 // Tx is a transactional client that is created by calling Client.Tx().
 type Tx struct {
 	config
+	// Assignment is the client for interacting with the Assignment builders.
+	Assignment *AssignmentClient
+	// Course is the client for interacting with the Course builders.
+	Course *CourseClient
 	// Customer is the client for interacting with the Customer builders.
 	Customer *CustomerClient
 	// Employee is the client for interacting with the Employee builders.
 	Employee *EmployeeClient
+	// Invoice is the client for interacting with the Invoice builders.
+	Invoice *InvoiceClient
 	// Order is the client for interacting with the Order builders.
 	Order *OrderClient
 	// Product is the client for interacting with the Product builders.
 	Product *ProductClient
+	// Student is the client for interacting with the Student builders.
+	Student *StudentClient
 	// Tag is the client for interacting with the Tag builders.
 	Tag *TagClient
+	// Teacher is the client for interacting with the Teacher builders.
+	Teacher *TeacherClient
 
 	// lazily loaded.
 	client     *Client
@@ -153,11 +163,16 @@ func (tx *Tx) Client() *Client {
 }
 
 func (tx *Tx) init() {
+	tx.Assignment = NewAssignmentClient(tx.config)
+	tx.Course = NewCourseClient(tx.config)
 	tx.Customer = NewCustomerClient(tx.config)
 	tx.Employee = NewEmployeeClient(tx.config)
+	tx.Invoice = NewInvoiceClient(tx.config)
 	tx.Order = NewOrderClient(tx.config)
 	tx.Product = NewProductClient(tx.config)
+	tx.Student = NewStudentClient(tx.config)
 	tx.Tag = NewTagClient(tx.config)
+	tx.Teacher = NewTeacherClient(tx.config)
 }
 
 // txDriver wraps the given dialect.Tx with a nop dialect.Driver implementation.
@@ -167,7 +182,7 @@ func (tx *Tx) init() {
 // of them in order to commit or rollback the transaction.
 //
 // If a closed transaction is embedded in one of the generated entities, and the entity
-// applies a query, for example: Customer.QueryXXX(), the query will be executed
+// applies a query, for example: Assignment.QueryXXX(), the query will be executed
 // through the driver which created this transaction.
 //
 // Note that txDriver is not goroutine safe.

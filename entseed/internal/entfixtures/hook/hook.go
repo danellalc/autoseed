@@ -9,6 +9,30 @@ import (
 	"github.com/danellalc/autoseed/entseed/internal/entfixtures"
 )
 
+// The AssignmentFunc type is an adapter to allow the use of ordinary
+// function as Assignment mutator.
+type AssignmentFunc func(context.Context, *entfixtures.AssignmentMutation) (entfixtures.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f AssignmentFunc) Mutate(ctx context.Context, m entfixtures.Mutation) (entfixtures.Value, error) {
+	if mv, ok := m.(*entfixtures.AssignmentMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *entfixtures.AssignmentMutation", m)
+}
+
+// The CourseFunc type is an adapter to allow the use of ordinary
+// function as Course mutator.
+type CourseFunc func(context.Context, *entfixtures.CourseMutation) (entfixtures.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f CourseFunc) Mutate(ctx context.Context, m entfixtures.Mutation) (entfixtures.Value, error) {
+	if mv, ok := m.(*entfixtures.CourseMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *entfixtures.CourseMutation", m)
+}
+
 // The CustomerFunc type is an adapter to allow the use of ordinary
 // function as Customer mutator.
 type CustomerFunc func(context.Context, *entfixtures.CustomerMutation) (entfixtures.Value, error)
@@ -31,6 +55,18 @@ func (f EmployeeFunc) Mutate(ctx context.Context, m entfixtures.Mutation) (entfi
 		return f(ctx, mv)
 	}
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *entfixtures.EmployeeMutation", m)
+}
+
+// The InvoiceFunc type is an adapter to allow the use of ordinary
+// function as Invoice mutator.
+type InvoiceFunc func(context.Context, *entfixtures.InvoiceMutation) (entfixtures.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f InvoiceFunc) Mutate(ctx context.Context, m entfixtures.Mutation) (entfixtures.Value, error) {
+	if mv, ok := m.(*entfixtures.InvoiceMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *entfixtures.InvoiceMutation", m)
 }
 
 // The OrderFunc type is an adapter to allow the use of ordinary
@@ -57,6 +93,18 @@ func (f ProductFunc) Mutate(ctx context.Context, m entfixtures.Mutation) (entfix
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *entfixtures.ProductMutation", m)
 }
 
+// The StudentFunc type is an adapter to allow the use of ordinary
+// function as Student mutator.
+type StudentFunc func(context.Context, *entfixtures.StudentMutation) (entfixtures.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f StudentFunc) Mutate(ctx context.Context, m entfixtures.Mutation) (entfixtures.Value, error) {
+	if mv, ok := m.(*entfixtures.StudentMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *entfixtures.StudentMutation", m)
+}
+
 // The TagFunc type is an adapter to allow the use of ordinary
 // function as Tag mutator.
 type TagFunc func(context.Context, *entfixtures.TagMutation) (entfixtures.Value, error)
@@ -67,6 +115,18 @@ func (f TagFunc) Mutate(ctx context.Context, m entfixtures.Mutation) (entfixture
 		return f(ctx, mv)
 	}
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *entfixtures.TagMutation", m)
+}
+
+// The TeacherFunc type is an adapter to allow the use of ordinary
+// function as Teacher mutator.
+type TeacherFunc func(context.Context, *entfixtures.TeacherMutation) (entfixtures.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f TeacherFunc) Mutate(ctx context.Context, m entfixtures.Mutation) (entfixtures.Value, error) {
+	if mv, ok := m.(*entfixtures.TeacherMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *entfixtures.TeacherMutation", m)
 }
 
 // Condition is a hook condition function.

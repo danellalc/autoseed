@@ -12,11 +12,16 @@ import (
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
+	"github.com/danellalc/autoseed/entseed/internal/entfixtures/assignment"
+	"github.com/danellalc/autoseed/entseed/internal/entfixtures/course"
 	"github.com/danellalc/autoseed/entseed/internal/entfixtures/customer"
 	"github.com/danellalc/autoseed/entseed/internal/entfixtures/employee"
+	"github.com/danellalc/autoseed/entseed/internal/entfixtures/invoice"
 	"github.com/danellalc/autoseed/entseed/internal/entfixtures/order"
 	"github.com/danellalc/autoseed/entseed/internal/entfixtures/product"
+	"github.com/danellalc/autoseed/entseed/internal/entfixtures/student"
 	"github.com/danellalc/autoseed/entseed/internal/entfixtures/tag"
+	"github.com/danellalc/autoseed/entseed/internal/entfixtures/teacher"
 )
 
 // ent aliases to avoid import conflicts in user's code.
@@ -77,11 +82,16 @@ var (
 func checkColumn(t, c string) error {
 	initCheck.Do(func() {
 		columnCheck = sql.NewColumnCheck(map[string]func(string) bool{
-			customer.Table: customer.ValidColumn,
-			employee.Table: employee.ValidColumn,
-			order.Table:    order.ValidColumn,
-			product.Table:  product.ValidColumn,
-			tag.Table:      tag.ValidColumn,
+			assignment.Table: assignment.ValidColumn,
+			course.Table:     course.ValidColumn,
+			customer.Table:   customer.ValidColumn,
+			employee.Table:   employee.ValidColumn,
+			invoice.Table:    invoice.ValidColumn,
+			order.Table:      order.ValidColumn,
+			product.Table:    product.ValidColumn,
+			student.Table:    student.ValidColumn,
+			tag.Table:        tag.ValidColumn,
+			teacher.Table:    teacher.ValidColumn,
 		})
 	})
 	return columnCheck(t, c)

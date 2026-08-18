@@ -218,6 +218,98 @@ func TestSeed_Postgres_ManyToManySkippedDoesNotBlockOtherEntities(t *testing.T) 
 	}
 }
 
+// TestSeed_Postgres_CompositeUniqueConstraint guards the end-to-end path
+// for a composite unique index: Invoice.Series and Invoice.Number carry
+// no unique constraint on their own, only together, and Postgres itself
+// enforces the real index ent's schema migration creates for it. Number
+// also declares an explicit StorageKey different from its ent name, so a
+// column-name mismatch in entseed's index reading would surface here as
+// a real "no such column" or constraint error, not a passing test.
+//
+// Unlike gormseed's version of this test, Series and Number are not
+// truncated to a tiny domain to force an organic collision: ent's
+// MaxLen validator is a compiled closure, not structured metadata
+// entc.LoadGraph can read back out, so entseed currently has no way to
+// carry a field's declared size into Field.Size the way gormseed's
+// schema.Field.Size does. The composite dedup algorithm itself is
+// exhaustively covered, with forced collisions, by uniqueness_test.go
+// (adapter-agnostic); this test's job is only to prove entseed's own
+// column-to-name resolution reaches real Postgres correctly.
+func TestSeed_Postgres_CompositeUniqueConstraint(t *testing.T) {
+	client := entClient(t)
+	ctx := context.Background()
+
+	if err := entseed.Seed(ctx, client, schemaPath, autoseed.WithSeed(7), autoseed.WithScale(100)); err != nil {
+		t.Fatalf("Seed: %v", err)
+	}
+
+	invoices, err := client.Invoice.Query().All(ctx)
+	if err != nil {
+		t.Fatalf("querying invoices: %v", err)
+	}
+	if len(invoices) != 100 {
+		t.Fatalf("Invoice count = %d, want 100", len(invoices))
+	}
+
+	seen := make(map[string]bool, len(invoices))
+	for _, inv := range invoices {
+		key := inv.Series + "|" + inv.Number
+		if seen[key] {
+			t.Fatalf("duplicate (Series, Number) = (%q, %q), want the composite constraint enforced", inv.Series, inv.Number)
+		}
+		seen[key] = true
+	}
+}
+
+// TestSeed_Postgres_TernaryJunction guards the N-ary generalization of
+// the junction cap end to end, on the shape only a composite
+// UniqueConstraints entry can express in ent (which has no composite
+// primary keys): Assignment's Student, Course and Teacher edges are each
+// their own single-column foreign key, unique only together via an
+// index.Edges(...).Unique() index. If PlanGeneration ever asked for more
+// (Student, Course, Teacher) combinations than the driver's non-driver
+// participants can jointly supply, Postgres's own unique index would
+// reject the duplicate triple with a real constraint-violation error, not
+// silently store it.
+func TestSeed_Postgres_TernaryJunction(t *testing.T) {
+	client := entClient(t)
+	ctx := context.Background()
+
+	if err := entseed.Seed(ctx, client, schemaPath, autoseed.WithSeed(11), autoseed.WithScale(6)); err != nil {
+		t.Fatalf("Seed: %v", err)
+	}
+
+	assignments, err := client.Assignment.Query().All(ctx)
+	if err != nil {
+		t.Fatalf("querying assignments: %v", err)
+	}
+	if len(assignments) == 0 {
+		t.Fatal("Assignment is empty, want at least some rows")
+	}
+
+	seen := make(map[[3]int]bool, len(assignments))
+	for _, a := range assignments {
+		student, err := a.QueryStudent().OnlyID(ctx)
+		if err != nil {
+			t.Fatalf("assignment %d: querying student: %v", a.ID, err)
+		}
+		course, err := a.QueryCourse().OnlyID(ctx)
+		if err != nil {
+			t.Fatalf("assignment %d: querying course: %v", a.ID, err)
+		}
+		teacher, err := a.QueryTeacher().OnlyID(ctx)
+		if err != nil {
+			t.Fatalf("assignment %d: querying teacher: %v", a.ID, err)
+		}
+
+		key := [3]int{student, course, teacher}
+		if seen[key] {
+			t.Fatalf("duplicate (Student, Course, Teacher) = %v, want the composite unique index enforced", key)
+		}
+		seen[key] = true
+	}
+}
+
 func containsLine(s, substr string) bool {
 	return indexOf(s, substr) != -1
 }

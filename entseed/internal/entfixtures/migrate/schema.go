@@ -8,6 +8,56 @@ import (
 )
 
 var (
+	// AssignmentsColumns holds the columns for the "assignments" table.
+	AssignmentsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt, Increment: true},
+		{Name: "course_assignments", Type: field.TypeInt},
+		{Name: "student_assignments", Type: field.TypeInt},
+		{Name: "teacher_assignments", Type: field.TypeInt},
+	}
+	// AssignmentsTable holds the schema information for the "assignments" table.
+	AssignmentsTable = &schema.Table{
+		Name:       "assignments",
+		Columns:    AssignmentsColumns,
+		PrimaryKey: []*schema.Column{AssignmentsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "assignments_courses_assignments",
+				Columns:    []*schema.Column{AssignmentsColumns[1]},
+				RefColumns: []*schema.Column{CoursesColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+			{
+				Symbol:     "assignments_students_assignments",
+				Columns:    []*schema.Column{AssignmentsColumns[2]},
+				RefColumns: []*schema.Column{StudentsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+			{
+				Symbol:     "assignments_teachers_assignments",
+				Columns:    []*schema.Column{AssignmentsColumns[3]},
+				RefColumns: []*schema.Column{TeachersColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "assignment_student_assignments_course_assignments_teacher_assignments",
+				Unique:  true,
+				Columns: []*schema.Column{AssignmentsColumns[2], AssignmentsColumns[1], AssignmentsColumns[3]},
+			},
+		},
+	}
+	// CoursesColumns holds the columns for the "courses" table.
+	CoursesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt, Increment: true},
+	}
+	// CoursesTable holds the schema information for the "courses" table.
+	CoursesTable = &schema.Table{
+		Name:       "courses",
+		Columns:    CoursesColumns,
+		PrimaryKey: []*schema.Column{CoursesColumns[0]},
+	}
 	// CustomersColumns holds the columns for the "customers" table.
 	CustomersColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt, Increment: true},
@@ -35,6 +85,25 @@ var (
 				Columns:    []*schema.Column{EmployeesColumns[1]},
 				RefColumns: []*schema.Column{EmployeesColumns[0]},
 				OnDelete:   schema.SetNull,
+			},
+		},
+	}
+	// InvoicesColumns holds the columns for the "invoices" table.
+	InvoicesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt, Increment: true},
+		{Name: "series", Type: field.TypeString},
+		{Name: "invoice_number_column", Type: field.TypeString},
+	}
+	// InvoicesTable holds the schema information for the "invoices" table.
+	InvoicesTable = &schema.Table{
+		Name:       "invoices",
+		Columns:    InvoicesColumns,
+		PrimaryKey: []*schema.Column{InvoicesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "invoice_series_invoice_number_column",
+				Unique:  true,
+				Columns: []*schema.Column{InvoicesColumns[1], InvoicesColumns[2]},
 			},
 		},
 	}
@@ -70,6 +139,16 @@ var (
 		Columns:    ProductsColumns,
 		PrimaryKey: []*schema.Column{ProductsColumns[0]},
 	}
+	// StudentsColumns holds the columns for the "students" table.
+	StudentsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt, Increment: true},
+	}
+	// StudentsTable holds the schema information for the "students" table.
+	StudentsTable = &schema.Table{
+		Name:       "students",
+		Columns:    StudentsColumns,
+		PrimaryKey: []*schema.Column{StudentsColumns[0]},
+	}
 	// TagsColumns holds the columns for the "tags" table.
 	TagsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt, Increment: true},
@@ -80,6 +159,16 @@ var (
 		Name:       "tags",
 		Columns:    TagsColumns,
 		PrimaryKey: []*schema.Column{TagsColumns[0]},
+	}
+	// TeachersColumns holds the columns for the "teachers" table.
+	TeachersColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt, Increment: true},
+	}
+	// TeachersTable holds the schema information for the "teachers" table.
+	TeachersTable = &schema.Table{
+		Name:       "teachers",
+		Columns:    TeachersColumns,
+		PrimaryKey: []*schema.Column{TeachersColumns[0]},
 	}
 	// ProductTagsColumns holds the columns for the "product_tags" table.
 	ProductTagsColumns = []*schema.Column{
@@ -108,16 +197,24 @@ var (
 	}
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
+		AssignmentsTable,
+		CoursesTable,
 		CustomersTable,
 		EmployeesTable,
+		InvoicesTable,
 		OrdersTable,
 		ProductsTable,
+		StudentsTable,
 		TagsTable,
+		TeachersTable,
 		ProductTagsTable,
 	}
 )
 
 func init() {
+	AssignmentsTable.ForeignKeys[0].RefTable = CoursesTable
+	AssignmentsTable.ForeignKeys[1].RefTable = StudentsTable
+	AssignmentsTable.ForeignKeys[2].RefTable = TeachersTable
 	EmployeesTable.ForeignKeys[0].RefTable = EmployeesTable
 	OrdersTable.ForeignKeys[0].RefTable = CustomersTable
 	ProductTagsTable.ForeignKeys[0].RefTable = ProductsTable

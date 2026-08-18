@@ -3,6 +3,7 @@ package entseed
 import (
 	"fmt"
 	"reflect"
+	"sort"
 	"strings"
 	"time"
 	"unicode"
@@ -96,7 +97,77 @@ func buildEntity(node *gen.Type) (autoseed.Entity, []autoseed.SkipReason, error)
 		})
 	}
 
-	return autoseed.Entity{Name: node.Name, Fields: fields, References: references}, skipped, nil
+	return autoseed.Entity{
+		Name:              node.Name,
+		Fields:            fields,
+		References:        references,
+		UniqueConstraints: uniqueConstraints(node),
+	}, skipped, nil
+}
+
+// storageKeyByName maps each of node's own (non-edge) field names,
+// including its ID, to its real storage key. ent's generated
+// Mutation.SetField matches against a field's storage key, not its
+// declared name — the two coincide unless a field declares an explicit
+// StorageKey override, so persist.go must translate through this map
+// rather than pass a field's own Name straight to SetField.
+func storageKeyByName(node *gen.Type) map[string]string {
+	keys := make(map[string]string, len(node.Fields)+1)
+	keys[node.ID.Name] = node.ID.StorageKey()
+	for _, f := range node.Fields {
+		if f.IsEdgeField() {
+			continue
+		}
+		keys[f.Name] = f.StorageKey()
+	}
+	return keys
+}
+
+// uniqueConstraints returns node's composite unique indexes -- an
+// index.Fields(...).Unique() or index.Edges(...).Unique() index declared
+// on the schema's Indexes method -- each as a field-name tuple in the
+// index's own column order, using the same name a plain Field or an
+// edge-owned Reference already carries elsewhere in this file (an edge's
+// own pascal-cased name, not its underlying storage column). A
+// single-column unique index is already carried on that Field's own
+// Unique flag instead and is not repeated here.
+func uniqueConstraints(node *gen.Type) [][]string {
+	nameByColumn := make(map[string]string, len(node.Fields)+len(node.Edges))
+	for _, f := range node.Fields {
+		if f.IsEdgeField() {
+			continue
+		}
+		nameByColumn[f.StorageKey()] = f.Name
+	}
+	for _, e := range node.Edges {
+		if e.OwnFK() {
+			nameByColumn[e.Rel.Column()] = pascal(e.Name)
+		}
+	}
+
+	var constraints [][]string
+	for _, idx := range node.Indexes {
+		if !idx.Unique || len(idx.Columns) < 2 {
+			continue
+		}
+		fields := make([]string, 0, len(idx.Columns))
+		complete := true
+		for _, column := range idx.Columns {
+			name, ok := nameByColumn[column]
+			if !ok {
+				complete = false
+				break
+			}
+			fields = append(fields, name)
+		}
+		if complete {
+			constraints = append(constraints, fields)
+		}
+	}
+	sort.Slice(constraints, func(i, j int) bool {
+		return strings.Join(constraints[i], "+") < strings.Join(constraints[j], "+")
+	})
+	return constraints
 }
 
 // pascal converts an ent identifier (camelCase or snake_case) to the

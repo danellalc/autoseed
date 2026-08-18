@@ -206,8 +206,8 @@ func TestPlanGeneration_JunctionCapsChildCountAtNonDriverRowCount(t *testing.T) 
 		item := entityPlan(t, plan, "InventoryItem")
 		warehouse := entityPlan(t, plan, "Warehouse")
 
-		if item.JunctionTarget != "Warehouse" {
-			t.Fatalf("seed %d: JunctionTarget = %q, want Warehouse", seed, item.JunctionTarget)
+		if len(item.JunctionParticipants) != 1 || item.JunctionParticipants[0].Target != "Warehouse" {
+			t.Fatalf("seed %d: JunctionParticipants = %v, want exactly one participant targeting Warehouse", seed, item.JunctionParticipants)
 		}
 		for i, count := range item.ChildCounts {
 			if count > warehouse.RowCount {
@@ -240,8 +240,8 @@ func TestPlanGeneration_NonJunctionSharedShapeUncapped(t *testing.T) {
 
 	plan := planFor(t, entities, autoseed.NewOptions(autoseed.WithSeed(1), autoseed.WithScale(3)))
 	item := entityPlan(t, plan, "OrderItem")
-	if item.JunctionTarget != "" {
-		t.Fatalf("JunctionTarget = %q, want empty: OrderItem's primary key is its own surrogate ID, not the two references", item.JunctionTarget)
+	if len(item.JunctionParticipants) != 0 {
+		t.Fatalf("JunctionParticipants = %v, want empty: OrderItem's primary key is its own surrogate ID, not the two references", item.JunctionParticipants)
 	}
 }
 
@@ -330,12 +330,12 @@ func TestPlanGeneration_SelfReferencingJunctionCapsAndDisambiguates(t *testing.T
 		person := entityPlan(t, plan, "Person")
 
 		driverKey := joinFields(follow.DriverFields)
-		junctionKey := joinFields(follow.JunctionFields)
-		if driverKey == "" || junctionKey == "" {
-			t.Fatalf("seed %d: Driver/Junction fields not both set: driver=%v junction=%v", seed, follow.DriverFields, follow.JunctionFields)
+		if driverKey == "" || len(follow.JunctionParticipants) != 1 {
+			t.Fatalf("seed %d: Driver/Junction fields not both set: driver=%v junction=%v", seed, follow.DriverFields, follow.JunctionParticipants)
 		}
+		junctionKey := joinFields(follow.JunctionParticipants[0].Fields)
 		if driverKey == junctionKey {
-			t.Fatalf("seed %d: DriverFields and JunctionFields are identical (%v) — the two references were not disambiguated, both would copy the same parent row", seed, follow.DriverFields)
+			t.Fatalf("seed %d: DriverFields and the junction participant's Fields are identical (%v) — the two references were not disambiguated, both would copy the same parent row", seed, follow.DriverFields)
 		}
 		maxValidPartners := person.RowCount - 1 // a row can never pair with itself
 		for i, count := range follow.ChildCounts {
@@ -374,8 +374,173 @@ func TestPlanGeneration_JunctionCapAppliesDespiteExtraRequiredReference(t *testi
 	for seed := uint64(0); seed < 200; seed++ {
 		plan := planFor(t, entities, autoseed.NewOptions(autoseed.WithSeed(seed), autoseed.WithScale(2)))
 		item := entityPlan(t, plan, "InventoryItem")
-		if item.JunctionTarget == "" {
-			t.Fatalf("seed %d: JunctionTarget not set despite Warehouse+Product exactly covering the primary key — the extra StorageZone reference must not disqualify the pair that does", seed)
+		if len(item.JunctionParticipants) == 0 {
+			t.Fatalf("seed %d: JunctionParticipants empty despite Warehouse+Product exactly covering the primary key — the extra StorageZone reference must not disqualify the pair that does", seed)
+		}
+	}
+}
+
+// TestPlanGeneration_TernaryJunctionCapsAtProductOfParticipants guards the
+// N-ary generalization of the junction cap: StudentCourseTeacher's
+// primary key is exactly its driver reference plus TWO other required
+// references together, not just one. selectDriver picks Course (its
+// Target sorts first alphabetically among Course/Student/Teacher), so
+// Student and Teacher become the junction participants. Every driver
+// row's child count must never exceed the PRODUCT of Student's and
+// Teacher's own row counts — asking for more would demand more distinct
+// (Student, Teacher) combinations than exist to pair with.
+func TestPlanGeneration_TernaryJunctionCapsAtProductOfParticipants(t *testing.T) {
+	entities := []autoseed.Entity{
+		{Name: "Student"},
+		{Name: "Course"},
+		{Name: "Teacher"},
+		{
+			Name: "StudentCourseTeacher",
+			Fields: []autoseed.Field{
+				{Name: "StudentID", PrimaryKey: true},
+				{Name: "CourseID", PrimaryKey: true},
+				{Name: "TeacherID", PrimaryKey: true},
+			},
+			References: []autoseed.Reference{
+				{Fields: []string{"StudentID"}, Target: "Student", Nullable: false},
+				{Fields: []string{"CourseID"}, Target: "Course", Nullable: false},
+				{Fields: []string{"TeacherID"}, Target: "Teacher", Nullable: false},
+			},
+		},
+	}
+
+	for seed := uint64(0); seed < 200; seed++ {
+		plan := planFor(t, entities, autoseed.NewOptions(autoseed.WithSeed(seed), autoseed.WithScale(5)))
+		assignment := entityPlan(t, plan, "StudentCourseTeacher")
+		if assignment.Driver != "Course" {
+			t.Fatalf("seed %d: Driver = %q, want Course (sorts first alphabetically)", seed, assignment.Driver)
+		}
+		student := entityPlan(t, plan, "Student")
+		teacher := entityPlan(t, plan, "Teacher")
+
+		if len(assignment.JunctionParticipants) != 2 {
+			t.Fatalf("seed %d: JunctionParticipants = %v, want exactly 2 (Student, Teacher)", seed, assignment.JunctionParticipants)
+		}
+		if assignment.JunctionParticipants[0].Target != "Student" || assignment.JunctionParticipants[1].Target != "Teacher" {
+			t.Fatalf("seed %d: JunctionParticipants targets = [%s %s], want [Student Teacher]",
+				seed, assignment.JunctionParticipants[0].Target, assignment.JunctionParticipants[1].Target)
+		}
+
+		maxPerDriverRow := student.RowCount * teacher.RowCount
+		for i, count := range assignment.ChildCounts {
+			if count > maxPerDriverRow {
+				t.Fatalf("seed %d: Course row %d wants %d children, more than the %d distinct (Student, Teacher) combinations available", seed, i, count, maxPerDriverRow)
+			}
+		}
+	}
+}
+
+// TestPlanGeneration_JunctionIndicesTernaryProducesDistinctCombinations
+// guards the mixed-radix index assignment JunctionIndices computes:
+// every row within one driver block must draw a distinct (Course,
+// Teacher) combination, and it must be confined within each target's own
+// row count.
+func TestPlanGeneration_JunctionIndicesTernaryProducesDistinctCombinations(t *testing.T) {
+	participants := []autoseed.JunctionParticipant{
+		{Target: "Course", Fields: []string{"CourseID"}},
+		{Target: "Teacher", Fields: []string{"TeacherID"}},
+	}
+	rowsOf := func(target string) int {
+		switch target {
+		case "Course":
+			return 4
+		case "Teacher":
+			return 3
+		}
+		return 0
+	}
+
+	driverRow := 2
+	seen := make(map[[2]int]bool)
+	for blockLocal := 0; blockLocal < 12; blockLocal++ {
+		indices := autoseed.JunctionIndices(participants, "Student", driverRow, blockLocal, rowsOf)
+		if len(indices) != 2 {
+			t.Fatalf("blockLocal %d: len(indices) = %d, want 2", blockLocal, len(indices))
+		}
+		courseIdx, teacherIdx := indices[0], indices[1]
+		if courseIdx < 0 || courseIdx >= 4 {
+			t.Fatalf("blockLocal %d: courseIdx = %d, want in [0,4)", blockLocal, courseIdx)
+		}
+		if teacherIdx < 0 || teacherIdx >= 3 {
+			t.Fatalf("blockLocal %d: teacherIdx = %d, want in [0,3)", blockLocal, teacherIdx)
+		}
+		key := [2]int{courseIdx, teacherIdx}
+		if seen[key] {
+			t.Fatalf("blockLocal %d: combination (Course=%d, Teacher=%d) repeats within the same driver block", blockLocal, courseIdx, teacherIdx)
+		}
+		seen[key] = true
+	}
+	if len(seen) != 12 {
+		t.Fatalf("saw %d distinct combinations, want all 12 of the 4x3 grid", len(seen))
+	}
+}
+
+// TestPlanGeneration_JunctionIndicesSelfReferencingParticipantSkipsDriverRow
+// guards that a self-referencing participant (its Target equals the
+// driver's own Target) never returns the driver's own row index.
+func TestPlanGeneration_JunctionIndicesSelfReferencingParticipantSkipsDriverRow(t *testing.T) {
+	participants := []autoseed.JunctionParticipant{
+		{Target: "Person", Fields: []string{"FollowingID"}},
+	}
+	rowsOf := func(string) int { return 5 }
+
+	for driverRow := 0; driverRow < 5; driverRow++ {
+		for blockLocal := 0; blockLocal < 4; blockLocal++ {
+			indices := autoseed.JunctionIndices(participants, "Person", driverRow, blockLocal, rowsOf)
+			if indices[0] == driverRow {
+				t.Fatalf("driverRow %d blockLocal %d: self-referencing participant returned the driver's own row index", driverRow, blockLocal)
+			}
+		}
+	}
+}
+
+// TestPlanGeneration_CompositeUniqueConstraintOnForeignKeysDrivesJunctionCap
+// guards that junctionCap recognizes a secondary UniqueConstraints entry
+// spanning foreign key fields, not only the entity's own primary key —
+// the shape EnsureUnique deliberately leaves alone (a reference field's
+// row-generation-time value is only a placeholder, not the real parent
+// key), so the generation plan must be the one to prevent a duplicate
+// (Student, Course) pairing here. selectDriver picks Course (its Target
+// sorts first alphabetically), so Student becomes the sole participant.
+func TestPlanGeneration_CompositeUniqueConstraintOnForeignKeysDrivesJunctionCap(t *testing.T) {
+	entities := []autoseed.Entity{
+		{Name: "Student"},
+		{Name: "Course"},
+		{
+			Name: "Enrollment",
+			Fields: []autoseed.Field{
+				{Name: "ID", PrimaryKey: true, AutoIncrement: true},
+				{Name: "StudentID"},
+				{Name: "CourseID"},
+			},
+			References: []autoseed.Reference{
+				{Fields: []string{"StudentID"}, Target: "Student", Nullable: false},
+				{Fields: []string{"CourseID"}, Target: "Course", Nullable: false},
+			},
+			UniqueConstraints: [][]string{{"StudentID", "CourseID"}},
+		},
+	}
+
+	for seed := uint64(0); seed < 200; seed++ {
+		plan := planFor(t, entities, autoseed.NewOptions(autoseed.WithSeed(seed), autoseed.WithScale(3)))
+		enrollment := entityPlan(t, plan, "Enrollment")
+		if enrollment.Driver != "Course" {
+			t.Fatalf("seed %d: Driver = %q, want Course (sorts first alphabetically)", seed, enrollment.Driver)
+		}
+		student := entityPlan(t, plan, "Student")
+
+		if len(enrollment.JunctionParticipants) != 1 || enrollment.JunctionParticipants[0].Target != "Student" {
+			t.Fatalf("seed %d: JunctionParticipants = %v, want exactly one participant targeting Student", seed, enrollment.JunctionParticipants)
+		}
+		for i, count := range enrollment.ChildCounts {
+			if count > student.RowCount {
+				t.Fatalf("seed %d: Course row %d wants %d Enrollment children, more than the %d Student rows available to pair with", seed, i, count, student.RowCount)
+			}
 		}
 	}
 }

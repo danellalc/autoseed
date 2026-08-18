@@ -38,9 +38,13 @@ func Seed(ctx context.Context, client any, schemaPath string, opts ...autoseed.O
 		return ErrNilClient
 	}
 
-	entities, _, _, err := read(schemaPath)
+	entities, entGraph, _, err := read(schemaPath)
 	if err != nil {
 		return err
+	}
+	storageKeys := make(map[string]map[string]string, len(entGraph.Nodes))
+	for _, node := range entGraph.Nodes {
+		storageKeys[node.Name] = storageKeyByName(node)
 	}
 
 	graph, err := autoseed.NewDependencyGraph(entities)
@@ -84,7 +88,7 @@ func Seed(ctx context.Context, client any, schemaPath string, opts ...autoseed.O
 			return err
 		}
 
-		instances, err := createRows(ctx, clientValue, entity, rows, entityPlan, deferredByEntity[name], inserted)
+		instances, err := createRows(ctx, clientValue, entity, rows, entityPlan, deferredByEntity[name], inserted, storageKeys[name])
 		if err != nil {
 			return fmt.Errorf("entseed: creating %s: %w", name, err)
 		}
@@ -123,6 +127,7 @@ func createRows(
 	plan autoseed.EntityGenerationPlan,
 	deferred []autoseed.DeferredReference,
 	inserted map[string]*insertedEntity,
+	storageKeys map[string]string,
 ) ([]reflect.Value, error) {
 	subClient := clientValue.Elem().FieldByName(entity.Name)
 	if !subClient.IsValid() {
@@ -137,7 +142,13 @@ func createRows(
 	driverRowOf := expandDriverRows(plan)
 	blockLocalOf := blockLocalIndices(plan)
 	driverKey := strings.Join(plan.DriverFields, "+")
-	junctionKey := strings.Join(plan.JunctionFields, "+")
+	junctionPositionOf := junctionPositions(plan)
+	rowsOf := func(target string) int {
+		if parent, ok := inserted[target]; ok {
+			return len(parent.instances)
+		}
+		return 0
+	}
 
 	instances := make([]reflect.Value, len(rows))
 	for i, values := range rows {
@@ -148,9 +159,14 @@ func createRows(
 		}
 
 		for fieldName, value := range values {
-			if err := mutation.SetField(fieldName, value); err != nil {
+			if err := mutation.SetField(storageKeys[fieldName], value); err != nil {
 				return nil, fmt.Errorf("setting %s.%s: %w", entity.Name, fieldName, err)
 			}
+		}
+
+		var junctionIdx []int
+		if len(plan.JunctionParticipants) > 0 {
+			junctionIdx = autoseed.JunctionIndices(plan.JunctionParticipants, plan.Driver, driverRowOf[i], blockLocalOf[i], rowsOf)
 		}
 
 		for _, ref := range entity.References {
@@ -164,16 +180,10 @@ func createRows(
 			}
 
 			parentIndex := i % len(parent.instances)
-			switch refKey {
-			case driverKey:
+			if refKey == driverKey {
 				parentIndex = driverRowOf[i]
-			case junctionKey:
-				n := len(parent.instances)
-				if ref.Target == plan.Driver {
-					parentIndex = (blockLocalOf[i] + driverRowOf[i] + 1) % n
-				} else {
-					parentIndex = blockLocalOf[i] % n
-				}
+			} else if pos, ok := junctionPositionOf[refKey]; ok {
+				parentIndex = junctionIdx[pos]
 			}
 
 			if len(ref.Fields) != 1 {
@@ -341,4 +351,15 @@ func blockLocalIndices(plan autoseed.EntityGenerationPlan) []int {
 		}
 	}
 	return indices
+}
+
+// junctionPositions maps each participant's own Fields key to its index
+// within plan.JunctionParticipants, so a reference on the entity can be
+// matched to the JunctionIndices slot computed for it.
+func junctionPositions(plan autoseed.EntityGenerationPlan) map[string]int {
+	positions := make(map[string]int, len(plan.JunctionParticipants))
+	for i, p := range plan.JunctionParticipants {
+		positions[strings.Join(p.Fields, "+")] = i
+	}
+	return positions
 }

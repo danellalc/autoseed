@@ -14,21 +14,30 @@ const defaultMeanChildrenPerParent = 3.0
 // of them belong to each row of its driving principal. Driver and
 // DriverFields together identify the specific reference chosen as the
 // driver — Fields disambiguates the case where two references target the
-// same entity (a self-referencing many-to-many). JunctionTarget and
-// JunctionFields are set the same way, only when the entity's own primary
-// key is exactly the driver reference's and one other required
-// reference's foreign key columns together — a many-to-many join table,
-// or an explicit composite-key "attributed join" entity like an inventory
-// or order-line row — where each driver row can pair with a given
-// JunctionTarget row at most once.
+// same entity (a self-referencing many-to-many). JunctionParticipants is
+// set the same way, only when entity's own primary key, or one of its
+// UniqueConstraints, is exactly covered by the driver reference together
+// with one or more other required references — a many-to-many join
+// table, an explicit composite-key "attributed join" entity like an
+// inventory or order-line row, or a ternary association with three or
+// more participating references — where each driver row can pair with a
+// given combination of JunctionParticipants rows at most once.
 type EntityGenerationPlan struct {
-	Entity         string
-	RowCount       int
-	Driver         string
-	DriverFields   []string
-	ChildCounts    []int
-	JunctionTarget string
-	JunctionFields []string
+	Entity               string
+	RowCount             int
+	Driver               string
+	DriverFields         []string
+	ChildCounts          []int
+	JunctionParticipants []JunctionParticipant
+}
+
+// JunctionParticipant identifies one non-driver reference in a junction
+// shape: a required reference that, together with the driver and zero or
+// more sibling participants, exactly covers a composite key. Target and
+// Fields work like Reference's own.
+type JunctionParticipant struct {
+	Target string
+	Fields []string
 }
 
 // GenerationPlan is the row count and cardinality decision for every
@@ -83,11 +92,11 @@ func PlanGeneration(entities []Entity, order []string, deferred []DeferredRefere
 
 		childCounts := drawChildCounts(planSeed.Entity(name), rowCounts[driver.Target])
 
-		junctionTarget, junctionFields, maxPerDriverRow := junctionCap(byName[name], *driver, deferredEdges, rowCounts)
-		if junctionTarget == "" && sharesDriverPrimaryKey(byName[name], *driver, deferredEdges) {
+		participants, maxPerDriverRow := junctionCap(byName[name], *driver, deferredEdges, rowCounts)
+		if len(participants) == 0 && sharesDriverPrimaryKey(byName[name], *driver, deferredEdges) {
 			maxPerDriverRow = 1
 		}
-		if junctionTarget != "" || maxPerDriverRow == 1 {
+		if len(participants) > 0 || maxPerDriverRow == 1 {
 			for i, count := range childCounts {
 				if count > maxPerDriverRow {
 					childCounts[i] = maxPerDriverRow
@@ -107,99 +116,198 @@ func PlanGeneration(entities []Entity, order []string, deferred []DeferredRefere
 
 		rowCounts[name] = total
 		plans = append(plans, EntityGenerationPlan{
-			Entity:         name,
-			RowCount:       total,
-			Driver:         driver.Target,
-			DriverFields:   driver.Fields,
-			ChildCounts:    childCounts,
-			JunctionTarget: junctionTarget,
-			JunctionFields: junctionFields,
+			Entity:               name,
+			RowCount:             total,
+			Driver:               driver.Target,
+			DriverFields:         driver.Fields,
+			ChildCounts:          childCounts,
+			JunctionParticipants: participants,
 		})
 	}
 
 	return &GenerationPlan{Entities: plans}, nil
 }
 
-// junctionCap reports the target, fields and row count of the one other
-// required reference that, together with driver, exactly accounts for
-// every field of entity's own primary key — the shape of a many-to-many
-// join table or an explicit composite-key "attributed join" entity.
+// junctionCap reports the other required references that, together with
+// driver, exactly account for every field of one of entity's composite
+// keys — its own primary key, tried first, or one of its
+// UniqueConstraints — the shape of a many-to-many join table, an
+// explicit composite-key "attributed join" entity, or a ternary (or
+// higher) association with three or more participating references.
 // Matching is by Fields, not Target, so a self-referencing many-to-many
 // (both references targeting the same entity as each other and as
-// driver) is still recognized: the two references are told apart by
-// their own foreign key columns, never by target name alone. A third
-// required reference elsewhere on the entity — one driver's cardinality
-// never needs to share the primary key with — does not disqualify the
-// pair that does cover it. Each driver row can pair with a given target
-// row at most once, so a driver row's child count can never exceed how
-// many target rows exist: asking for more than that is asking for more
-// distinct pairs than the target side can supply, which PlanGeneration's
-// caller then cannot assign without duplicating a pair and colliding on
-// the primary key. Self-referencing lowers that ceiling by one — a row
-// can never pair with itself. Returns ("", nil, 0) when no other
-// required reference exactly completes the primary key together with
-// driver — including a primary key of three or more foreign key columns,
-// out of scope for this pairwise check.
-func junctionCap(entity Entity, driver reference, deferredEdges map[string]bool, rowCounts map[string]int) (string, []string, int) {
-	pkFields := make(map[string]bool)
-	for _, field := range entity.Fields {
-		if field.PrimaryKey {
-			pkFields[field.Name] = true
-		}
-	}
-	if len(pkFields) == 0 {
-		return "", nil, 0
-	}
-
+// driver) is still recognized: the references are told apart by their
+// own foreign key columns, never by target name alone. A further
+// required reference elsewhere on the entity — one the driver's
+// cardinality never needs to share the key with — does not disqualify a
+// key that a different subset of references does cover; a key whose
+// remaining fields cannot be covered by exactly one required reference
+// per field, with no field claimed twice, is skipped in favor of the
+// next candidate key.
+//
+// Each driver row can pair with a given combination of participant rows
+// at most once, so a driver row's child count can never exceed the
+// product of every participant's own usable row count: asking for more
+// than that is asking for more distinct combinations than the
+// participants can jointly supply, which PlanGeneration's caller then
+// cannot assign without duplicating a combination and colliding on the
+// key. A self-referencing participant lowers its own factor by one — a
+// row can never pair with itself. Returns (nil, 0) when no candidate key
+// is exactly covered this way.
+func junctionCap(entity Entity, driver reference, deferredEdges map[string]bool, rowCounts map[string]int) ([]JunctionParticipant, int) {
 	driverKey := strings.Join(driver.Fields, "+")
-	driverFields := make(map[string]bool, len(driver.Fields))
-	for _, field := range driver.Fields {
-		driverFields[field] = true
-	}
+	driverFields := fieldSet(driver.Fields)
 
-	for _, ref := range entity.References {
-		if ref.Nullable || deferredEdges[deferredEdgeKey(entity.Name, ref.Fields)] {
+	for _, keyFields := range candidateKeyFieldSets(entity) {
+		keySet := fieldSet(keyFields)
+		if len(keySet) < 2 || !isSubset(keySet, driverFields) {
 			continue
 		}
-		if strings.Join(ref.Fields, "+") == driverKey {
+		remaining := make(map[string]bool, len(keySet))
+		for field := range keySet {
+			if !driverFields[field] {
+				remaining[field] = true
+			}
+		}
+		if len(remaining) == 0 {
 			continue
 		}
 
-		combined := make(map[string]bool, len(pkFields))
-		for field := range driverFields {
-			combined[field] = true
-		}
-		for _, field := range ref.Fields {
-			combined[field] = true
-		}
-		if len(combined) != len(pkFields) {
-			continue
-		}
-		match := true
-		for field := range combined {
-			if !pkFields[field] {
-				match = false
+		var participants []JunctionParticipant
+		covered := make(map[string]bool, len(remaining))
+		complete := true
+		for _, ref := range entity.References {
+			if ref.Nullable || deferredEdges[deferredEdgeKey(entity.Name, ref.Fields)] {
+				continue
+			}
+			if strings.Join(ref.Fields, "+") == driverKey {
+				continue
+			}
+			if !isSubset(remaining, fieldSet(ref.Fields)) {
+				continue
+			}
+
+			overlap := false
+			for _, field := range ref.Fields {
+				if covered[field] {
+					overlap = true
+					break
+				}
+				covered[field] = true
+			}
+			if overlap {
+				complete = false
 				break
 			}
+			participants = append(participants, JunctionParticipant{Target: ref.Target, Fields: ref.Fields})
 		}
-		if match {
-			maxPerDriverRow := rowCounts[ref.Target]
-			if ref.Target == driver.Target {
+		if !complete || len(covered) != len(remaining) {
+			continue
+		}
+
+		sort.Slice(participants, func(i, j int) bool {
+			if participants[i].Target != participants[j].Target {
+				return participants[i].Target < participants[j].Target
+			}
+			return strings.Join(participants[i].Fields, "+") < strings.Join(participants[j].Fields, "+")
+		})
+
+		maxPerDriverRow := 1
+		for _, p := range participants {
+			base := rowCounts[p.Target]
+			if p.Target == driver.Target {
 				// Self-referencing: a row can never pair with itself, so
 				// only N-1 of the N target rows are ever valid partners.
-				// persist.go's junction assignment guarantees this by
-				// construction (an offset that skips the driver's own
-				// row), but the cap itself must never promise N.
-				maxPerDriverRow--
-				if maxPerDriverRow < 0 {
-					maxPerDriverRow = 0
-				}
+				// JunctionIndices guarantees this by construction (an
+				// offset that skips the driver's own row), but the cap
+				// itself must never promise N.
+				base--
 			}
-			return ref.Target, ref.Fields, maxPerDriverRow
+			if base < 0 {
+				base = 0
+			}
+			maxPerDriverRow *= base
 		}
+		return participants, maxPerDriverRow
 	}
 
-	return "", nil, 0
+	return nil, 0
+}
+
+// candidateKeyFieldSets returns entity's own composite keys to try as a
+// junction shape, in priority order: its primary key first (if it has
+// one), then each UniqueConstraints entry in declared order.
+func candidateKeyFieldSets(entity Entity) [][]string {
+	var sets [][]string
+
+	var pk []string
+	for _, field := range entity.Fields {
+		if field.PrimaryKey {
+			pk = append(pk, field.Name)
+		}
+	}
+	if len(pk) > 0 {
+		sets = append(sets, pk)
+	}
+
+	return append(sets, entity.UniqueConstraints...)
+}
+
+func fieldSet(fields []string) map[string]bool {
+	set := make(map[string]bool, len(fields))
+	for _, field := range fields {
+		set[field] = true
+	}
+	return set
+}
+
+func isSubset(super, sub map[string]bool) bool {
+	for field := range sub {
+		if !super[field] {
+			return false
+		}
+	}
+	return true
+}
+
+// JunctionIndices returns, for one row at position blockLocal within its
+// driver row's block, the parent row index to pair with for each of
+// participants, in the same order. rows reports how many rows already
+// exist for a given entity name. driverRow is the driver's own row index
+// for this block; a participant whose Target equals driverTarget is
+// self-referencing and skips driverRow itself, since a row can never
+// pair with itself.
+//
+// The mapping decomposes blockLocal in mixed radix over each
+// participant's own usable row count, in participants' own order: this
+// is injective as long as blockLocal is less than the product of those
+// counts, exactly the guarantee PlanGeneration's cap on ChildCounts
+// already gives every block. Two rows in the same driver block therefore
+// always draw a distinct combination across every participant; two rows
+// in different blocks differ by driverRow alone.
+func JunctionIndices(participants []JunctionParticipant, driverTarget string, driverRow, blockLocal int, rows func(target string) int) []int {
+	indices := make([]int, len(participants))
+	remaining := blockLocal
+	for i, p := range participants {
+		full := rows(p.Target)
+		selfReferencing := p.Target == driverTarget
+		base := full
+		if selfReferencing {
+			base--
+		}
+		if base <= 0 {
+			continue
+		}
+
+		digit := remaining % base
+		remaining /= base
+		if selfReferencing {
+			indices[i] = (digit + driverRow + 1) % full
+		} else {
+			indices[i] = digit
+		}
+	}
+	return indices
 }
 
 // sharesDriverPrimaryKey reports whether entity's only required reference

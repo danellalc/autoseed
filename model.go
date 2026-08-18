@@ -7,10 +7,15 @@ import "reflect"
 
 // Entity describes one seedable type read from an ORM model: its name, the
 // fields that hold values, and the foreign key references to other entities.
+// UniqueConstraints holds one entry per composite unique index: two or more
+// field names that, taken together as a tuple, must be unique across every
+// row. A single-column unique constraint is expressed on the Field itself
+// instead — an entry here always has two or more Fields.
 type Entity struct {
-	Name       string
-	Fields     []Field
-	References []Reference
+	Name              string
+	Fields            []Field
+	References        []Reference
+	UniqueConstraints [][]string
 }
 
 // Field describes one column-backed value on an Entity. Type is the Go
