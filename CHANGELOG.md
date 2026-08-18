@@ -130,6 +130,24 @@ change, even if the public API itself is unchanged.
   real PostgreSQL on both adapters; MySQL, the combined "MegaMart" model,
   and property-based tests are not yet part of `SeedCoverage`'s own test
   surface — see [ARCHITECTURE.md](ARCHITECTURE.md#roadmap).
+- `cmd/autoseed`, a CLI: `autoseed explain --schema <path>` reads an ent
+  schema straight from source and prints the same report
+  `entseed.Explain` returns, with no database connection and no
+  generated `*ent.Client` needed. This is deliberately the CLI's entire
+  scope — no `gormseed` equivalent and no `seed` subcommand for either
+  adapter: a precompiled binary cannot import an arbitrary caller's own
+  Go types (a GORM model list, or a generated ent client), both of which
+  only exist inside that caller's own compiled module; `entc.LoadGraph`
+  is the one exception, built for exactly this kind of external tooling
+  to read schema source directly — see
+  [ARCHITECTURE.md](ARCHITECTURE.md#design-decisions) for the full
+  reasoning. `explain --help`/`-h` (and the top-level `-help`, alongside
+  the existing `-h`/`--help`) exit 0 with usage on stdout, matching the
+  top-level `--help` convention rather than being treated as a usage
+  error; an unrecognized trailing argument after a valid `--schema` is
+  rejected the same way. An `Explain` error is printed as-is, without an
+  added prefix, since `entseed`'s and `autoseed`'s own errors already
+  self-identify their source.
 
 ## [0.1.0]
 

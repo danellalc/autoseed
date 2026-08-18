@@ -10,9 +10,9 @@ From the author of [EFCore.AutoSeed](https://github.com/danellalc/EFCore.AutoSee
 
 In development. This README describes the full design being built — see the [roadmap](ARCHITECTURE.md#roadmap) for what ships when.
 
-**Works today:** reading a GORM or ent model, `Explain`, and `Seed` on both adapters — real inserts, in dependency order, with long-tail cardinality, single-column and composite unique-field dedup, a cardinality cap that covers a ternary/N-ary "attributed join" as well as the pairwise case, deferred second-pass cycles, `WithNilRate` for leaving a Nullable field genuinely NULL at a configurable rate, `WithLocale("pt_BR")` for Brazilian names, cities, streets and phone numbers — tested against real PostgreSQL and MySQL — and `SeedCoverage` on both adapters for the smallest dataset that exercises every field and relationship shape instead of a bulk one, tested against real PostgreSQL so far.
+**Works today:** reading a GORM or ent model, `Explain`, and `Seed` on both adapters — real inserts, in dependency order, with long-tail cardinality, single-column and composite unique-field dedup, a cardinality cap that covers a ternary/N-ary "attributed join" as well as the pairwise case, deferred second-pass cycles, `WithNilRate` for leaving a Nullable field genuinely NULL at a configurable rate, `WithLocale("pt_BR")` for Brazilian names, cities, streets and phone numbers — tested against real PostgreSQL and MySQL — `SeedCoverage` on both adapters for the smallest dataset that exercises every field and relationship shape instead of a bulk one, tested against real PostgreSQL so far, and a small CLI (`autoseed explain`) for reading an ent schema straight from source, no database or generated client needed.
 
-**Not built yet:** every value-realism knob beyond the ~16 built-in inference rules and the `pt_BR` locale (dirty data, weekday/business-hour clustering, another locale), and the CLI. Code blocks below that use them are the design, marked as such inline.
+**Not built yet:** every value-realism knob beyond the ~16 built-in inference rules and the `pt_BR` locale (dirty data, weekday/business-hour clustering, another locale), and a `seed` CLI command for either adapter — see [Command line](#command-line) below for why. Code blocks below that use them are the design, marked as such inline.
 
 ## The problem
 
@@ -98,6 +98,18 @@ err := gormseed.SeedCoverage(ctx, db, []any{&Customer{}, &Order{}, &OrderItem{}}
 ```
 
 Every nullable field in both states, every bool-kind field in both states, every sized string field at empty, one character and its declared maximum length, every relationship at zero, one and several children. Usually well under 50 rows. `WithScale` and `WithNilRate` are ignored — row counts and null placement come from the model's own shape, not a scale factor or a probability.
+
+## Command line
+
+```bash
+go install github.com/danellalc/autoseed/cmd/autoseed@latest
+
+autoseed explain --schema ./ent/schema
+```
+
+Reads an ent schema straight from source and prints the same report `entseed.Explain` returns — insertion order, deferred cycles, skipped constructs — with no database connection and no generated `*ent.Client` needed.
+
+That is also the CLI's entire scope. There is no `gormseed` equivalent and no `seed` subcommand for either adapter: a precompiled `autoseed` binary cannot import an arbitrary caller's own Go types — a GORM model list and a generated ent client both only exist inside the caller's own compiled module. `entc.LoadGraph` is the one exception, built for exactly this kind of external tooling to read schema source directly. Writing real rows stays a Go API call (`gormseed.Seed`, `entseed.Seed`) made from within your own module — see [ARCHITECTURE.md](ARCHITECTURE.md#design-decisions) for the full reasoning.
 
 ## Adapters
 

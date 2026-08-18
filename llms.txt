@@ -117,12 +117,24 @@ constrained by an axis. The sized-string axis never fires for `entseed.SeedCover
 gormseed, `entc.LoadGraph` exposes no structured way to read a `MaxLen` validator back out, so
 `entseed`'s `ModelReader` never populates `Field.Size`.
 
+```bash
+go install github.com/danellalc/autoseed/cmd/autoseed@latest
+autoseed explain --schema ./ent/schema
+```
+
+The `autoseed` CLI is `explain` only, for ent schemas only: it reads schema source directly via
+the same mechanism `entc.LoadGraph` uses, needing no database and no generated `*ent.Client`. That
+is also its entire scope — there is no `gormseed` equivalent and no `seed` subcommand for either
+adapter, since a precompiled binary cannot import an arbitrary caller's own Go types (a GORM model
+list, or a generated ent client) the way it can read schema source. Do not suggest
+`autoseed seed ...` or a GORM CLI invocation; both are out of scope, not unbuilt-yet.
+
 ## Planned, not implemented yet
 
 These identifiers do not exist in the module. Do not generate calls to them.
 
 Coherence across DIFFERENT entities (a child row's CreatedAt at or after its parent's) is not
-built; coherence today is same-row only. A CLI (`autoseed explain`) is not built either.
+built; coherence today is same-row only.
 
 ## Guarantees
 
