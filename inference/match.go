@@ -52,13 +52,21 @@ func isFloat(t reflect.Type) bool {
 	return isKind(t, floatKinds...)
 }
 
+// truncate cuts value to at most field.Size runes — Field.Size models a
+// SQL VARCHAR(n) limit, which counts characters, not bytes, so a
+// byte-index cut could split a multi-byte rune in half and hand the
+// database a value that is not even valid UTF-8.
 func truncate(field autoseed.Field, value any) any {
 	if field.Size <= 0 {
 		return value
 	}
 	text, ok := value.(string)
-	if !ok || len(text) <= field.Size {
+	if !ok {
 		return value
 	}
-	return text[:field.Size]
+	runes := []rune(text)
+	if len(runes) <= field.Size {
+		return value
+	}
+	return string(runes[:field.Size])
 }

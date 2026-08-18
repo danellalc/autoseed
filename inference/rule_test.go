@@ -4,6 +4,7 @@ import (
 	"errors"
 	"reflect"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/danellalc/autoseed"
 	"github.com/danellalc/autoseed/inference"
@@ -105,12 +106,69 @@ func TestGenerateRow_TruncatesEveryRuleToFieldSize(t *testing.T) {
 	}
 }
 
+// TestGenerateRow_TruncationIsRuneAwareNotByteAware guards a real bug:
+// truncation cut at a byte index, not a rune index. Field.Size models a
+// SQL VARCHAR(n) character limit, and a byte-index cut through a
+// multi-byte UTF-8 rune produces a value that is both over the character
+// limit by the database's own counting and not even valid UTF-8.
+func TestGenerateRow_TruncationIsRuneAwareNotByteAware(t *testing.T) {
+	gen := inference.NewGenerator(fixedRule{priority: 0, claims: "City", value: "Curaçao"})
+	entity := autoseed.Entity{
+		Name:   "Address",
+		Fields: []autoseed.Field{{Name: "City", Type: reflect.TypeOf(""), Size: 5}},
+	}
+
+	values, err := gen.GenerateRow(entity, autoseed.NewSeededSource(1))
+	if err != nil {
+		t.Fatalf("GenerateRow: %v", err)
+	}
+	got := values["City"].(string)
+	if !utf8.ValidString(got) {
+		t.Fatalf("City = %q is not valid UTF-8 — a byte-index cut split the ç in half", got)
+	}
+	if want := "Curaç"; got != want {
+		t.Fatalf("City = %q, want %q (first 5 runes of \"Curaçao\")", got, want)
+	}
+}
+
+// TestGenerateRow_GeneratesNaturalNonAutoIncrementPrimaryKeyField guards a
+// real bug: GenerateRow used to skip every PrimaryKey field
+// unconditionally, including one that is neither auto-increment (so the
+// database won't generate it) nor a foreign key (so persistence won't
+// copy it from a parent). A composite key mixing a foreign key column
+// with one plain, natural column — e.g. WarehouseID+ProductID+
+// EffectiveDate, EffectiveDate not covered by any reference — left that
+// column at its permanent zero value, making every row for the same
+// (WarehouseID, ProductID) pair collide on it too.
+func TestGenerateRow_GeneratesNaturalNonAutoIncrementPrimaryKeyField(t *testing.T) {
+	gen := inference.NewGenerator(fixedRule{priority: 0, claims: "EffectiveDate", value: "generated"})
+	entity := autoseed.Entity{
+		Name: "PriceHistory",
+		Fields: []autoseed.Field{
+			{Name: "WarehouseID", Type: reflect.TypeOf(0), PrimaryKey: true},
+			{Name: "EffectiveDate", Type: reflect.TypeOf(""), PrimaryKey: true},
+		},
+		References: []autoseed.Reference{{Fields: []string{"WarehouseID"}, Target: "Warehouse"}},
+	}
+
+	values, err := gen.GenerateRow(entity, autoseed.NewSeededSource(1))
+	if err != nil {
+		t.Fatalf("GenerateRow: %v", err)
+	}
+	if _, ok := values["WarehouseID"]; ok {
+		t.Fatal("WarehouseID is a foreign key, must not be generated")
+	}
+	if values["EffectiveDate"] != "generated" {
+		t.Fatalf("EffectiveDate = %v, want a generated value: it is a primary key field but neither auto-increment nor a foreign key, so nothing else would ever give it one", values["EffectiveDate"])
+	}
+}
+
 func TestGenerateRow_SkipsPrimaryKeyAndForeignKeyFields(t *testing.T) {
 	gen := inference.NewGenerator(fixedRule{priority: 0, claims: "Name", value: "x"})
 	entity := autoseed.Entity{
 		Name: "Order",
 		Fields: []autoseed.Field{
-			{Name: "ID", Type: reflect.TypeOf(0), PrimaryKey: true},
+			{Name: "ID", Type: reflect.TypeOf(0), PrimaryKey: true, AutoIncrement: true},
 			{Name: "CustomerID", Type: reflect.TypeOf(0)},
 			{Name: "Name", Type: reflect.TypeOf("")},
 		},

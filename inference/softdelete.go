@@ -34,7 +34,8 @@ func (SoftDeleteRule) CanInfer(field autoseed.Field) bool {
 // turns nil into SQL NULL and a time.Time into a valid deleted-at
 // timestamp.
 func (SoftDeleteRule) Infer(_ autoseed.Field, seed *autoseed.SeededSource, generated map[string]any) any {
-	if seed.Rand().Float64() < softDeleteSurvivalRate {
+	r := seed.Rand()
+	if r.Float64() < softDeleteSurvivalRate {
 		return nil
 	}
 
@@ -50,5 +51,5 @@ func (SoftDeleteRule) Infer(_ autoseed.Field, seed *autoseed.SeededSource, gener
 	if window <= 0 {
 		return base
 	}
-	return base.Add(time.Duration(seed.Rand().Int64N(int64(window))))
+	return base.Add(time.Duration(r.Int64N(int64(window))))
 }

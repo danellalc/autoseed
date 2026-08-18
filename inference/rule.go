@@ -6,6 +6,7 @@ package inference
 
 import (
 	"fmt"
+	"reflect"
 	"sort"
 
 	"github.com/danellalc/autoseed"
@@ -38,23 +39,47 @@ func NewGenerator(rules ...Rule) *Generator {
 	return &Generator{rules: sorted}
 }
 
-// GenerateRow produces a value for every field on entity that is not a
-// primary key or a foreign key column — those come from the persistence
-// stage, not from inference — keyed by field name. seed must already be
-// scoped to the row, typically source.Entity(entity.Name).Row(index). It
-// returns autoseed.ErrUnsupportedField, naming the entity and field, if no
-// rule claims a field. A string value longer than field.Size is truncated
+// GenerateRow produces a value for every field on entity that isn't
+// database-generated: a foreign key column (copied from its parent at
+// the persistence stage, never from inference) or an auto-increment
+// primary key. A primary key field that is neither — a natural,
+// non-auto-increment column, whether it's an entity's whole key or, in a
+// composite key, the one part not already covered by a reference — is
+// generated like any other field, since leaving it at its Go zero value
+// would make every row collide on it.
+//
+// A field typed as one of database/sql's nullable wrappers (sql.NullString,
+// sql.NullInt64, sql.NullBool, sql.NullFloat64, sql.NullTime, and the
+// narrower NullInt32/NullInt16/NullByte) is matched against rules by its
+// wrapped value's type, so a field named Email of type sql.NullString
+// still gets EmailRule's treatment, not just generic text, and always
+// comes back Valid — there is no null-rate knob yet.
+//
+// seed must already be scoped to the row, typically
+// source.Entity(entity.Name).Row(index). It returns
+// autoseed.ErrUnsupportedField, naming the entity and field, if no rule
+// claims a field. A string value longer than field.Size is truncated
 // before it reaches the caller, regardless of which rule produced it, so a
 // named rule can never hand a sized column a value the database rejects.
 func (g *Generator) GenerateRow(entity autoseed.Entity, seed *autoseed.SeededSource) (map[string]any, error) {
 	skip := foreignKeyFieldNames(entity)
 
-	values := make(map[string]any, len(entity.Fields))
-	claimed := make(map[string]bool, len(entity.Fields))
+	fields := make([]autoseed.Field, len(entity.Fields))
+	nullableFields := make(map[string]reflect.Type, len(entity.Fields))
+	for i, field := range entity.Fields {
+		if isNullableWrapper(field.Type) {
+			nullableFields[field.Name] = field.Type
+			field.Type = unwrapNullable(field.Type)
+		}
+		fields[i] = field
+	}
+
+	values := make(map[string]any, len(fields))
+	claimed := make(map[string]bool, len(fields))
 
 	for _, rule := range g.rules {
-		for _, field := range entity.Fields {
-			if field.PrimaryKey || skip[field.Name] || claimed[field.Name] || !rule.CanInfer(field) {
+		for _, field := range fields {
+			if databaseGenerated(field) || skip[field.Name] || claimed[field.Name] || !rule.CanInfer(field) {
 				continue
 			}
 			claimed[field.Name] = true
@@ -62,14 +87,25 @@ func (g *Generator) GenerateRow(entity autoseed.Entity, seed *autoseed.SeededSou
 		}
 	}
 
-	for _, field := range entity.Fields {
-		if field.PrimaryKey || skip[field.Name] || claimed[field.Name] {
+	for _, field := range fields {
+		if databaseGenerated(field) || skip[field.Name] || claimed[field.Name] {
 			continue
 		}
 		return nil, fmt.Errorf("%w: %s.%s", autoseed.ErrUnsupportedField, entity.Name, field.Name)
 	}
 
+	for name, nullableType := range nullableFields {
+		if values[name] == nil {
+			continue
+		}
+		values[name] = wrapNullable(nullableType, values[name])
+	}
+
 	return values, nil
+}
+
+func databaseGenerated(field autoseed.Field) bool {
+	return field.PrimaryKey && field.AutoIncrement
 }
 
 func foreignKeyFieldNames(entity autoseed.Entity) map[string]bool {
