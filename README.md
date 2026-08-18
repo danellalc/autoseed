@@ -85,7 +85,7 @@ plan, err := gormseed.Explain(db, []any{&Customer{}, &Order{}, &OrderItem{}})
 fmt.Println(plan.Report())
 ```
 
-Prints the insertion order, which cycles got deferred to a second pass, and which constructs were skipped and why. Nothing is written. Row counts join the report once `GenerationPlan` ships — see the [roadmap](ARCHITECTURE.md#roadmap).
+Prints the insertion order, which cycles got deferred to a second pass, and which constructs were skipped and why. Nothing is written. `GenerationPlan` itself already computes row counts for `Seed` internally; wiring them into `Explain`'s report too is still open — see the [roadmap](ARCHITECTURE.md#roadmap).
 
 ### Coverage mode
 
@@ -121,7 +121,7 @@ GORM first because it is where most Go codebases are. ent second because its sch
 
 ## Validated
 
-A property-based test asserts that for **any** model and **any** mix of nullable/required references, the engine either names an unsatisfiable cycle or produces an order that respects every foreign key; it runs on every commit against the graph and cycle engine directly, no database needed. A second layer of property tests runs `gormseed.Seed` itself, seed and scale rapid-varied, against a real containerized PostgreSQL and checks every row for orphaned foreign keys — a linear chain, a diamond of two required principals merging into one dependent, and a nullable self-reference.
+A property-based test asserts that for **any** model and **any** mix of nullable/required references, the engine either names an unsatisfiable cycle or produces an order that respects every foreign key; it runs on every commit against the graph and cycle engine directly, no database needed. A second layer of property tests runs `gormseed.Seed` itself, seed and scale rapid-varied, against a real containerized PostgreSQL and checks every row for orphaned foreign keys and primary key collisions — a linear chain, a diamond of two required principals merging into one dependent, a nullable self-reference, a composite-primary-key junction, a shared-primary-key one-to-one, and a self-referencing many-to-many (a "follows" table, where two foreign keys target the same entity and only their own columns tell them apart).
 
 `gormseed.Seed` is tested against real, containerized PostgreSQL — never SQLite-only — covering a required-FK chain with long-tail cardinality, a nullable self-reference, a required/nullable two-entity cycle resolved in a second pass, and a many-to-many join table. A combined "MegaMart" model exercises every one of those shapes together in a single seed run — self-reference, embedded struct, composite and shared primary keys, unique columns, soft-delete bias, a many-to-many join and a correlated derived value — the way a real application model mixes them. MySQL gets its own real-container test for the required-FK path and its `LastInsertId` batch arithmetic, not yet the same depth. Against real, public schemas is still ahead of launch.
 

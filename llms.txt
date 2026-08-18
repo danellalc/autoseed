@@ -58,7 +58,11 @@ no opt-in — any string field named `Cpf` or `Cnpj` (case-insensitive suffix, a
 generates a Brazilian document number with a valid check digit. This is not locale-gated —
 there is no locale mechanism yet — so a non-Brazilian project with a coincidentally matching
 field name gets Brazilian-format data. Every rule's string output, named or generic, is
-truncated to the column's declared size before it reaches the database.
+truncated to the column's declared size, by rune not by byte, before it reaches the database. A
+field typed `sql.NullString`/`NullInt64`/`NullBool`/`NullFloat64`/`NullTime` (and the narrower
+`NullInt32`/`NullInt16`/`NullByte`) is matched against rules by its wrapped value's type, so
+`Email sql.NullString` still gets EmailRule's treatment, then comes back with `Valid: true` —
+there is no null-rate knob yet, so it is never actually NULL.
 
 ## Planned, not implemented yet
 
@@ -93,8 +97,13 @@ built either; coherence today is same-row only.
 - A composite-primary-key "attributed join" entity (extra columns on a many-to-many table, or
   GORM's own auto-generated join table) never generates more children for one driver row than
   the other side has rows to pair with; a shared-primary-key one-to-one (the GORM equivalent of
-  EF Core's table splitting) never generates more than one child per driver row. Either shape,
-  uncapped, would risk two children colliding on the same primary key.
+  EF Core's table splitting) never generates more than one child per driver row. A
+  self-referencing many-to-many (both foreign keys targeting the same entity, e.g. a "follows"
+  table) is recognized the same way — the two references are told apart by their own foreign key
+  columns, never by target name — and never generates a row that pairs with itself. Either shape,
+  uncapped, would risk two children colliding on the same primary key. A composite primary key of
+  three or more foreign key columns (a ternary relationship) is not covered by this and stays
+  uncapped.
 - Embedded structs are written as columns, never as their own table.
 - Unsupported constructs (polymorphic associations, for now) are skipped BY NAME in the Explain
   report, never silently misread or misgenerated.
@@ -102,14 +111,19 @@ built either; coherence today is same-row only.
   in the generic fallback's range, not restricted to a declared constant — Go's reflection cannot
   enumerate a type's declared constants the way C#'s `Enum.GetValues` can, so this is a language
   limit, not an unported rule.
-- Primary keys are assumed database-generated (auto-increment/serial) — this is a *different* gap
-  from the shared-primary-key 1:1 case above, which is supported. A natural or non-auto-increment
-  primary key with no reference driving it at all (e.g. an app-generated UUID on a root entity) is
-  left at its zero value, not generated — give such entities an auto-increment surrogate key
-  instead.
+- A primary key field is assumed database-generated only when it's also auto-increment. Any other
+  primary key field — a natural key on a standalone entity (e.g. an app-generated UUID), or the
+  one column of a composite key not covered by any reference (an `EffectiveDate` alongside
+  `WarehouseID`+`ProductID`) — is generated like any other field now, using whatever rule matches
+  its Go type. A type no rule recognizes (a custom `driver.Valuer` a database/sql nullable
+  wrapper isn't one of) fails named with `ErrUnsupportedField` instead of being silently left at
+  its zero value.
 - `Seed`'s `ctx` is honored by the real database calls (batch inserts, the deferred-cycle
   transaction), not just in-memory value generation — a canceled or deadline-exceeded context
   stops in-flight writes. `Seed(ctx, nil, ...)` returns `gormseed.ErrNilDB` rather than panicking.
+  `autoseed.PlanGeneration` and `autoseed.EnsureUnique` return `ErrNilSeed` for a nil
+  `*SeededSource`, and `PlanGeneration` returns `ErrInvalidScale` for a negative
+  `Options.Scale`, rather than panicking.
 
 ## Common mistakes when using this library
 

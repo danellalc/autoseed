@@ -44,7 +44,7 @@ Seven stages; new code belongs to exactly one:
 
 **Never re-derive GORM conventions by hand.** Use `schema.Parse` and `schema.Relationships`. GORM resolves; we read.
 
-**Errors, never panics.** Typed sentinel errors (`ErrUnsatisfiableCycle`, `ErrUnsupportedField`) wrapped with `%w`, friendly to `errors.Is`/`errors.As`, naming the entity and field in English.
+**Errors, never panics.** Typed sentinel errors (`ErrUnsatisfiableCycle`, `ErrUnsupportedField`, `ErrNilSeed`, `ErrInvalidScale`, `gormseed.ErrNilDB`) wrapped with `%w`, friendly to `errors.Is`/`errors.As`, naming the entity and field in English. Validate at the boundary: a nil `*SeededSource`/`*gorm.DB` or a negative `Scale` gets caught by the exported entry point that receives it, before it reaches a nil dereference or a negative-length `make`.
 
 **Fail by name, never silently.** Unsupported constructs are skipped BY NAME in the Explain report or returned as typed errors. Silently mis-generated data is the worst failure mode this project exists to prevent.
 
@@ -64,8 +64,9 @@ Seven stages; new code belongs to exactly one:
 - Property-based (pgregory.net/rapid): for any model and any seed, every FK references an existing row.
 - Determinism: same seed twice → byte-identical output; anti-map-iteration test runs repeatedly.
 - New inference rules and distribution shapes ship with tests.
-- The MegaMart torture model (self-reference, embedded struct, composite and shared primary keys, unique columns, soft-delete, many2many, correlated derived values, all in one seed run) must stay green. Composite unique constraints and non-auto-increment primary keys are out of scope — not modeled.
-- A composite-primary-key junction entity or a shared-primary-key one-to-one must never generate more children for a driver row than the primary key can hold without colliding — cap `GenerationPlan`'s draw, don't rely on the round-robin assignment in `persist.go` to paper over it. Any new "child's key is derived from the parent's" shape gets a property test at small scale (1-4), where the collision is easiest to trigger.
+- The MegaMart torture model (self-reference, embedded struct, composite and shared primary keys, unique columns, soft-delete, many2many, correlated derived values, all in one seed run) must stay green. Composite unique constraints and a composite primary key of three or more foreign keys are out of scope — not modeled.
+- A composite-primary-key junction entity or a shared-primary-key one-to-one must never generate more children for a driver row than the primary key can hold without colliding — cap `GenerationPlan`'s draw, don't rely on the round-robin assignment in `persist.go` to paper over it. Match a reference by its own `Fields`, never by `Target` alone: two references can share a target (a self-referencing many-to-many), and only their own foreign key columns tell them apart. Any new "child's key is derived from the parent's" shape gets a property test at small scale (1-4), where the collision is easiest to trigger — and if the shape is self-referencing, assert no row pairs with itself, not just that no primary key repeats.
+- A primary key field is skipped by `GenerateRow` only when it's auto-increment; any other primary key field (a natural key, or the one non-FK column of a mixed composite key) must be generated like any other field — never assume "PrimaryKey" alone means "someone else fills this in."
 
 ## Commits
 

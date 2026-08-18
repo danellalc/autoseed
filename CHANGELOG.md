@@ -36,34 +36,58 @@ deterministic rows — no hand-written ordering, no fixtures.
   unsatisfiable cycle in a model is named in one error, not just the first
   found.
 - `autoseed.GenerationPlan`: long-tail cardinality (Exponential distribution)
-  for related row counts, one driving principal per dependent entity, a
-  required non-driver reference target is never left at zero rows. A
-  composite-primary-key "attributed join" entity (a many-to-many table with
-  extra columns, or GORM's own auto-generated join table) caps each driver
-  row's child count at its other side's row count, and a shared-primary-key
-  one-to-one (the GORM equivalent of EF Core's table splitting) caps at
-  exactly one — either shape would otherwise risk two children colliding on
-  the same primary key.
+  for related row counts, one driving principal per dependent entity
+  (identified by its own foreign key columns, not just its target's name, so
+  two references to the same entity — a self-referencing many-to-many — are
+  never confused with each other), a required non-driver reference target is
+  never left at zero rows. A composite-primary-key "attributed join" entity
+  (a many-to-many table with extra columns, or GORM's own auto-generated join
+  table) caps each driver row's child count at its other side's row count —
+  one less, and never at itself, when the join is self-referencing — and a
+  shared-primary-key one-to-one (the GORM equivalent of EF Core's table
+  splitting) caps at exactly one; either shape, uncapped, risks two children
+  colliding on the same primary key. The cap still finds the right pair of
+  references even when a third, unrelated required reference sits on the
+  same entity. A composite primary key of three or more foreign key columns
+  (a ternary relationship) is out of scope for this pairwise check and stays
+  uncapped — see Known gaps. `PlanGeneration` returns `ErrInvalidScale` for a
+  negative `Options.Scale` and `ErrNilSeed` for a nil seed, rather than
+  panicking on a negative slice length or a nil dereference.
 - ~16 built-in `inference` rules over gofakeit v7 (seeded): name/email/phone/
   address/URL, coherent `CreatedAt`/`UpdatedAt` and `Price`×`Quantity`=`Total`
   on the same row, a hand-rolled Brazilian CPF/CNPJ check-digit generator (no
   locale mechanism yet — matches on field name alone), and a soft-delete rule
   that leaves `gorm.DeletedAt` unset on 90% of rows and, for the rest, a
   timestamp no earlier than the row's own `CreatedAt`/`UpdatedAt`. Every
-  rule's string output is truncated to the column's declared size before it
-  reaches the database, not just the generic fallback rule's.
+  rule's string output is truncated to the column's declared size, by rune
+  not by byte (a byte-index cut could split a multi-byte character and hand
+  the database invalid UTF-8), before it reaches the database — not just the
+  generic fallback rule's. A primary key field that is neither an
+  auto-increment column nor a foreign key — the one natural, non-reference
+  part of a mixed composite key, or a whole natural key on a standalone
+  entity — is generated like any other field instead of left at its Go zero
+  value. A field typed as one of `database/sql`'s nullable wrappers
+  (`sql.NullString`, `sql.NullInt64`, `sql.NullBool`, `sql.NullFloat64`,
+  `sql.NullTime`, and the narrower `NullInt32`/`NullInt16`/`NullByte`) is
+  matched against rules by its wrapped value's type — a field named `Email`
+  of type `sql.NullString` still gets `EmailRule`'s treatment, not just
+  generic text — and always comes back `Valid`; there is no null-rate knob
+  yet.
 - `autoseed.EnsureUnique`: duplicate values for a single-column string unique
   field are rewritten with a random numeric suffix, retried up to 20 times,
-  before `ErrUnsatisfiableUniqueness` names the field.
+  by rune not by byte, before `ErrUnsatisfiableUniqueness` names the field.
+  Returns `ErrNilSeed` for a nil seed rather than panicking.
 - Embedded structs (`gorm:"embedded"`) generated as columns on the owner,
   never as their own entity. Polymorphic associations are read and skipped
   by name in the `Explain` report — generation is a v2 item.
 - Property-based tests (`pgregory.net/rapid`): the graph/cycle engine for any
   generated model and seed, and `gormseed.Seed` itself against real
   PostgreSQL for a linear chain, a diamond of two required principals, a
-  nullable self-reference, a composite-primary-key junction and a
-  shared-primary-key one-to-one — no orphaned foreign keys and no primary
-  key collisions, ever.
+  nullable self-reference, a composite-primary-key junction, a
+  shared-primary-key one-to-one, and a self-referencing many-to-many (both
+  foreign keys targeting the same entity, e.g. a "follows" table) — no
+  orphaned foreign keys, no primary key collisions, and no accidental
+  self-loops, ever.
 - `examples/gormseed-basic`, a runnable example (its own Go module, `replace`
   points at this checkout) seeding a real SQLite database end to end.
 - `Seed` accepts `ctx` and now actually honors it: a canceled or
@@ -79,8 +103,27 @@ deterministic rows — no hand-written ordering, no fixtures.
 
 - `gormseed.SeedCoverage` (the smallest dataset that exercises everything) is
   not built.
-- Composite unique constraints and non-auto-increment (e.g. UUID) primary
-  keys are not generated — primary keys are assumed database-generated.
+- Composite unique constraints (secondary indexes spanning more than one
+  column) are not generated.
+- A non-auto-increment primary key with no reference driving it at all — a
+  standalone entity's own natural key, e.g. an app-generated UUID — is
+  generated using whatever rule matches its Go type, same as any other
+  field; a type no rule recognizes (a `uuid.UUID`, a custom `driver.Valuer`)
+  fails named with `ErrUnsupportedField` rather than being silently left at
+  its zero value.
+- A composite primary key of three or more foreign key columns (a ternary
+  relationship) is not cardinality-capped — see `autoseed.GenerationPlan`
+  above.
+- A Go named-integer "enum" type generates a plain unconstrained number, not
+  one of its declared constants — Go's reflection cannot enumerate them the
+  way C#'s `Enum.GetValues` can.
+- `PriceRule` doesn't match `Balance` and isn't precision/scale-aware
+  (`Field` carries no `Precision`/`Scale`); there is no `Discount`/
+  `AmountDue`-style correlated rule.
+- The deferred (cycle-broken) second pass updates one row at a time, not
+  batched — every other write path batches at 500 rows. Correct, not a
+  scaling match for the rest of the pipeline; an entity with a
+  self-reference or a broken cycle pays one round trip per row in that pass.
 - The property tests and the "MegaMart" model run against PostgreSQL only;
   MySQL's own coverage is a required-FK chain and its `LastInsertId` batch
   arithmetic, not the same depth. SQLite runs `Seed`/`Explain` in the
