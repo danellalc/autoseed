@@ -17,13 +17,9 @@ func (genericTextRule) CanInfer(field autoseed.Field) bool {
 	return isKind(field.Type, reflect.String)
 }
 
-func (genericTextRule) Infer(field autoseed.Field, seed *autoseed.SeededSource, _ map[string]any) any {
+func (genericTextRule) Infer(_ autoseed.Field, seed *autoseed.SeededSource, _ map[string]any) any {
 	text := faker(seed).LoremIpsumSentence(genericTextWordCount)
-	text = strings.TrimSuffix(text, ".")
-	if field.Size > 0 && len(text) > field.Size {
-		text = text[:field.Size]
-	}
-	return text
+	return strings.TrimSuffix(text, ".")
 }
 
 const (

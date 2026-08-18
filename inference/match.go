@@ -4,6 +4,8 @@ import (
 	"reflect"
 	"strings"
 	"time"
+
+	"github.com/danellalc/autoseed"
 )
 
 var timeType = reflect.TypeOf(time.Time{})
@@ -48,4 +50,15 @@ func isInt(t reflect.Type) bool {
 
 func isFloat(t reflect.Type) bool {
 	return isKind(t, floatKinds...)
+}
+
+func truncate(field autoseed.Field, value any) any {
+	if field.Size <= 0 {
+		return value
+	}
+	text, ok := value.(string)
+	if !ok || len(text) <= field.Size {
+		return value
+	}
+	return text[:field.Size]
 }

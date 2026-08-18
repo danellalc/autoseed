@@ -43,7 +43,9 @@ func NewGenerator(rules ...Rule) *Generator {
 // stage, not from inference — keyed by field name. seed must already be
 // scoped to the row, typically source.Entity(entity.Name).Row(index). It
 // returns autoseed.ErrUnsupportedField, naming the entity and field, if no
-// rule claims a field.
+// rule claims a field. A string value longer than field.Size is truncated
+// before it reaches the caller, regardless of which rule produced it, so a
+// named rule can never hand a sized column a value the database rejects.
 func (g *Generator) GenerateRow(entity autoseed.Entity, seed *autoseed.SeededSource) (map[string]any, error) {
 	skip := foreignKeyFieldNames(entity)
 
@@ -56,7 +58,7 @@ func (g *Generator) GenerateRow(entity autoseed.Entity, seed *autoseed.SeededSou
 				continue
 			}
 			claimed[field.Name] = true
-			values[field.Name] = rule.Infer(field, seed.Field(field.Name), values)
+			values[field.Name] = truncate(field, rule.Infer(field, seed.Field(field.Name), values))
 		}
 	}
 

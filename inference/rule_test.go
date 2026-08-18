@@ -81,6 +81,30 @@ func TestGenerateRow_FirstClaimWins(t *testing.T) {
 	}
 }
 
+// TestGenerateRow_TruncatesEveryRuleToFieldSize guards a real gap: only
+// the generic fallback rule used to respect Field.Size, so a named rule
+// (EmailRule, AddressRule, URLRule, ...) claiming a sized column could
+// hand the database a value too long for it, turning a clean library-side
+// concern into a raw driver constraint violation. Truncation now happens
+// once, centrally in GenerateRow, so it applies no matter which rule
+// produced the value — proven here with a rule GenerateRow has no special
+// knowledge of.
+func TestGenerateRow_TruncatesEveryRuleToFieldSize(t *testing.T) {
+	gen := inference.NewGenerator(fixedRule{priority: 0, claims: "Code", value: "abcdefghij"})
+	entity := autoseed.Entity{
+		Name:   "Widget",
+		Fields: []autoseed.Field{{Name: "Code", Type: reflect.TypeOf(""), Size: 5}},
+	}
+
+	values, err := gen.GenerateRow(entity, autoseed.NewSeededSource(1))
+	if err != nil {
+		t.Fatalf("GenerateRow: %v", err)
+	}
+	if values["Code"] != "abcde" {
+		t.Fatalf("Code = %q, want truncated to 5 chars (\"abcde\")", values["Code"])
+	}
+}
+
 func TestGenerateRow_SkipsPrimaryKeyAndForeignKeyFields(t *testing.T) {
 	gen := inference.NewGenerator(fixedRule{priority: 0, claims: "Name", value: "x"})
 	entity := autoseed.Entity{

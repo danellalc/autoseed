@@ -74,7 +74,7 @@ func TestDefaultGenerator_CoherenceHoldsTogether(t *testing.T) {
 		price := values["Price"].(float64)
 		quantity := values["Quantity"].(int)
 		total := values["Total"].(float64)
-		wantTotal := math.Floor(price*float64(quantity)*100) / 100
+		wantTotal := math.Round(price*float64(quantity)*100) / 100
 		if total != wantTotal {
 			t.Fatalf("seed %d: Total = %v, want Price*Quantity = %v", seed, total, wantTotal)
 		}

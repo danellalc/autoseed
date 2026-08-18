@@ -66,14 +66,14 @@ func (CorrelatedTotalRule) CanInfer(field autoseed.Field) bool {
 	return isFloat(field.Type) && hasSuffix(field.Name, "Total", "Subtotal")
 }
 
-// Infer generates Price times Quantity, floored to two decimal places,
+// Infer generates Price times Quantity, rounded to two decimal places,
 // from a same-row Price and Quantity when both were already generated,
 // otherwise an independent amount in PriceRule's own range.
 func (CorrelatedTotalRule) Infer(_ autoseed.Field, seed *autoseed.SeededSource, generated map[string]any) any {
 	price, hasPrice := findSibling[float64](generated, "Price")
 	quantity, hasQuantity := findSibling[int](generated, "Quantity", "Qty")
 	if hasPrice && hasQuantity {
-		return math.Floor(price*float64(quantity)*100) / 100
+		return math.Round(price*float64(quantity)*100) / 100
 	}
 	return faker(seed).Price(minPrice, maxPrice)
 }
