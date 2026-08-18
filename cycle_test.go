@@ -139,6 +139,60 @@ func TestResolve_CycleErrorNamesRealPath(t *testing.T) {
 	}
 }
 
+// TestResolve_MultiNullableEdgeCycleDefersOnlyOne guards against
+// over-deferring: a 3-entity ring with two nullable edges (X->Y, Y->Z) and
+// one required edge (Z->X) needs only one of the two nullable edges broken
+// to become acyclic. Deferring both — the old behavior — would strip Y of
+// its only reference, turning it into a driverless root entity with a flat
+// row count instead of one derived from Z's. The .NET sibling's
+// CycleResolver breaks exactly one edge per cycle, ordered by (dependent,
+// principal, FK fields); X.YID sorts first, so it is the one deferred.
+func TestResolve_MultiNullableEdgeCycleDefersOnlyOne(t *testing.T) {
+	graph, err := autoseed.NewDependencyGraph([]autoseed.Entity{
+		{Name: "X", References: []autoseed.Reference{{Fields: []string{"YID"}, Target: "Y", Nullable: true}}},
+		{Name: "Y", References: []autoseed.Reference{{Fields: []string{"ZID"}, Target: "Z", Nullable: true}}},
+		{Name: "Z", References: []autoseed.Reference{{Fields: []string{"XID"}, Target: "X", Nullable: false}}},
+	})
+	if err != nil {
+		t.Fatalf("NewDependencyGraph: %v", err)
+	}
+
+	result, err := graph.Resolve()
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	want := []autoseed.DeferredReference{{Entity: "X", Fields: []string{"YID"}, Target: "Y"}}
+	if !equalDeferred(result.Deferred, want) {
+		t.Fatalf("Deferred = %v, want exactly %v (only X.YID broken, Y.ZID left intact)", result.Deferred, want)
+	}
+}
+
+// TestResolve_ReportsEveryIndependentUnsatisfiableCycle guards against
+// stopping at the first unsatisfiable cycle found: two disjoint required-FK
+// pairs in the same model must both be named in one error, so fixing the
+// first doesn't just reveal the second on the next Resolve call.
+func TestResolve_ReportsEveryIndependentUnsatisfiableCycle(t *testing.T) {
+	graph, err := autoseed.NewDependencyGraph([]autoseed.Entity{
+		{Name: "A", References: []autoseed.Reference{{Fields: []string{"BID"}, Target: "B", Nullable: false}}},
+		{Name: "B", References: []autoseed.Reference{{Fields: []string{"AID"}, Target: "A", Nullable: false}}},
+		{Name: "C", References: []autoseed.Reference{{Fields: []string{"DID"}, Target: "D", Nullable: false}}},
+		{Name: "D", References: []autoseed.Reference{{Fields: []string{"CID"}, Target: "C", Nullable: false}}},
+	})
+	if err != nil {
+		t.Fatalf("NewDependencyGraph: %v", err)
+	}
+
+	_, err = graph.Resolve()
+	if !errors.Is(err, autoseed.ErrUnsatisfiableCycle) {
+		t.Fatalf("got %v, want ErrUnsatisfiableCycle", err)
+	}
+	for _, want := range []string{"A -> B -> A", "C -> D -> C"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("error = %q, want it to contain %q", err.Error(), want)
+		}
+	}
+}
+
 func TestResolve_DeduplicatesIdenticalDeferredReferences(t *testing.T) {
 	graph, err := autoseed.NewDependencyGraph([]autoseed.Entity{
 		{

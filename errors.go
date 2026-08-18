@@ -39,8 +39,12 @@ func unknownReferenceError(entity string, fields []string, target string) error 
 	return fmt.Errorf("%w: %s.%s references %q", ErrUnknownReference, entity, strings.Join(fields, "+"), target)
 }
 
-func unsatisfiableCycleError(cycle []string) error {
-	return fmt.Errorf("%w: %s", ErrUnsatisfiableCycle, strings.Join(cycle, " -> "))
+func unsatisfiableCycleError(cycles [][]string) error {
+	paths := make([]string, len(cycles))
+	for i, cycle := range cycles {
+		paths[i] = strings.Join(cycle, " -> ")
+	}
+	return fmt.Errorf("%w: %s", ErrUnsatisfiableCycle, strings.Join(paths, "; "))
 }
 
 func duplicateEntityError(name string) error {

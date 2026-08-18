@@ -5,9 +5,18 @@ import (
 	"strings"
 )
 
+// resolveCycles breaks every cycle in edges by deferring the single
+// nullable edge that breaks it — never every nullable edge in the
+// component at once, which would defer FKs a cycle never needed broken
+// and understate their driving entity's real cardinality. Candidates tie
+// broken by (from, to, fields), same order Explain reports insertion in.
+// A component with no nullable edge at all is unsatisfiable; every such
+// component is collected before returning, so one Resolve call names
+// every independent unsatisfiable cycle, not just the first found.
 func resolveCycles(names []string, edges []graphEdge) ([]graphEdge, []DeferredReference, error) {
 	active := append([]graphEdge(nil), edges...)
 	var deferred []DeferredReference
+	var unsatisfiable [][]string
 
 	for {
 		components := stronglyConnectedComponents(names, active)
@@ -32,18 +41,26 @@ func resolveCycles(names []string, edges []graphEdge) ([]graphEdge, []DeferredRe
 
 			nullable := dedupeEdges(filterNullable(internal))
 			if len(nullable) == 0 {
-				return nil, nil, unsatisfiableCycleError(findCycle(component, internal))
+				unsatisfiable = append(unsatisfiable, findCycle(component, internal))
+				active = removeEdges(active, internal)
+				continue
 			}
 
-			active = removeEdges(active, nullable)
-			for _, edge := range nullable {
-				deferred = append(deferred, DeferredReference{Entity: edge.from, Fields: edge.fields, Target: edge.to})
-			}
+			chosen := minEdge(nullable)
+			active = removeEdges(active, []graphEdge{chosen})
+			deferred = append(deferred, DeferredReference{Entity: chosen.from, Fields: chosen.fields, Target: chosen.to})
 		}
 
 		if !foundCycle {
 			break
 		}
+	}
+
+	if len(unsatisfiable) > 0 {
+		sort.Slice(unsatisfiable, func(i, j int) bool {
+			return strings.Join(unsatisfiable[i], ">") < strings.Join(unsatisfiable[j], ">")
+		})
+		return nil, nil, unsatisfiableCycleError(unsatisfiable)
 	}
 
 	sort.Slice(deferred, func(i, j int) bool {
@@ -53,6 +70,28 @@ func resolveCycles(names []string, edges []graphEdge) ([]graphEdge, []DeferredRe
 		return strings.Join(deferred[i].Fields, "+") < strings.Join(deferred[j].Fields, "+")
 	})
 	return active, deferred, nil
+}
+
+func minEdge(edges []graphEdge) graphEdge {
+	chosen := edges[0]
+	for _, edge := range edges[1:] {
+		if edge.from != chosen.from {
+			if edge.from < chosen.from {
+				chosen = edge
+			}
+			continue
+		}
+		if edge.to != chosen.to {
+			if edge.to < chosen.to {
+				chosen = edge
+			}
+			continue
+		}
+		if strings.Join(edge.fields, "+") < strings.Join(chosen.fields, "+") {
+			chosen = edge
+		}
+	}
+	return chosen
 }
 
 func filterNullable(edges []graphEdge) []graphEdge {
