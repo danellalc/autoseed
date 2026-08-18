@@ -140,6 +140,96 @@ func TestSeed_Postgres_Property_NullableSelfReference(t *testing.T) {
 	})
 }
 
+// JunctionWarehouse, JunctionProduct and JunctionInventoryItem mirror
+// gormseed/megamart_test.go's MMInventoryItem shape: a composite primary
+// key made of exactly its two required references' foreign key columns —
+// a many-to-many join table in every way except that GORM sees it as a
+// user-declared struct, not an auto-generated one. Scale is deliberately
+// drawn small (1-4): a wide driver-parent-to-target-parent gap is exactly
+// what triggers a primary key collision if child counts aren't capped at
+// the target's own row count.
+type JunctionWarehouse struct {
+	ID uint `gorm:"primaryKey"`
+}
+type JunctionProduct struct {
+	ID uint `gorm:"primaryKey"`
+}
+type JunctionInventoryItem struct {
+	WarehouseID    uint `gorm:"primaryKey"`
+	Warehouse      JunctionWarehouse
+	ProductID      uint `gorm:"primaryKey"`
+	Product        JunctionProduct
+	QuantityOnHand int
+}
+
+func TestSeed_Postgres_Property_JunctionNeverDuplicatesAPrimaryKey(t *testing.T) {
+	db := postgresDB(t)
+	models := []any{&JunctionWarehouse{}, &JunctionProduct{}, &JunctionInventoryItem{}}
+	if err := db.AutoMigrate(models...); err != nil {
+		t.Fatalf("AutoMigrate: %v", err)
+	}
+
+	rapid.Check(t, func(rt *rapid.T) {
+		seed := rapid.Uint64().Draw(rt, "seed")
+		scale := rapid.IntRange(1, 4).Draw(rt, "scale")
+
+		truncateAll(t, db, "junction_inventory_items", "junction_products", "junction_warehouses")
+		if err := gormseed.Seed(context.Background(), db, models, autoseed.WithSeed(seed), autoseed.WithScale(scale)); err != nil {
+			rt.Fatalf("Seed(seed=%d, scale=%d): %v", seed, scale, err)
+		}
+
+		assertNoOrphans(rt, db, "junction_inventory_items", "warehouse_id", "junction_warehouses", "id")
+		assertNoOrphans(rt, db, "junction_inventory_items", "product_id", "junction_products", "id")
+
+		var total, distinct int64
+		db.Table("junction_inventory_items").Count(&total)
+		db.Raw(`SELECT count(*) FROM (SELECT DISTINCT warehouse_id, product_id FROM junction_inventory_items) d`).Scan(&distinct)
+		if total != distinct {
+			rt.Fatalf("seed=%d scale=%d: %d rows but only %d distinct (warehouse_id, product_id) pairs", seed, scale, total, distinct)
+		}
+	})
+}
+
+// SharedKeyProduct and SharedKeyProfile mirror the GORM equivalent of EF
+// Core's table splitting: ProfileProductID is both its own primary key
+// and its only foreign key, so a driver row's key gets copied verbatim
+// into the child's own primary key. Two children for the same product
+// would collide on it — exactly what an uncapped long-tail draw risks.
+type SharedKeyProduct struct {
+	ID uint `gorm:"primaryKey"`
+}
+type SharedKeyProfile struct {
+	ProfileProductID uint             `gorm:"primaryKey"`
+	Product          SharedKeyProduct `gorm:"foreignKey:ProfileProductID"`
+}
+
+func TestSeed_Postgres_Property_SharedPrimaryKeyNeverDuplicates(t *testing.T) {
+	db := postgresDB(t)
+	models := []any{&SharedKeyProduct{}, &SharedKeyProfile{}}
+	if err := db.AutoMigrate(models...); err != nil {
+		t.Fatalf("AutoMigrate: %v", err)
+	}
+
+	rapid.Check(t, func(rt *rapid.T) {
+		seed := rapid.Uint64().Draw(rt, "seed")
+		scale := rapid.IntRange(1, 15).Draw(rt, "scale")
+
+		truncateAll(t, db, "shared_key_profiles", "shared_key_products")
+		if err := gormseed.Seed(context.Background(), db, models, autoseed.WithSeed(seed), autoseed.WithScale(scale)); err != nil {
+			rt.Fatalf("Seed(seed=%d, scale=%d): %v", seed, scale, err)
+		}
+
+		assertNoOrphans(rt, db, "shared_key_profiles", "profile_product_id", "shared_key_products", "id")
+
+		var total, distinct int64
+		db.Table("shared_key_profiles").Count(&total)
+		db.Raw(`SELECT count(DISTINCT profile_product_id) FROM shared_key_profiles`).Scan(&distinct)
+		if total != distinct {
+			rt.Fatalf("seed=%d scale=%d: %d rows but only %d distinct profile_product_id values", seed, scale, total, distinct)
+		}
+	})
+}
+
 func truncateAll(t *testing.T, db *gorm.DB, tables ...string) {
 	t.Helper()
 	stmt := fmt.Sprintf("TRUNCATE TABLE %s RESTART IDENTITY CASCADE", strings.Join(tables, ", "))

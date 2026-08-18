@@ -14,14 +14,14 @@ import (
 // The MegaMart fixture is a single model combining every torture case the
 // rest of the suite exercises in isolation: a self-reference (Employee), an
 // embedded struct (Product.Dimensions), composite primary keys
-// (InventoryItem, OrderLine), simple unique columns (Company.Name,
-// Warehouse.Code, Product.Sku, Order.Reference), soft-delete (Employee,
-// Order), a many2many join (Product/Tag) and a correlated derived value
-// (OrderLine.Total). Ported in spirit from the .NET sibling's
-// MegaMartSchemaTests.cs, adapted to GORM: EF's table-per-type inheritance
-// (Supervisor : Employee, DigitalProduct/PhysicalProduct : Product) and its
-// shared-primary-key one-to-one (ProductProfile) have no GORM equivalent
-// and are left out rather than faked.
+// (InventoryItem, OrderLine), a shared-primary-key one-to-one
+// (ProductProfile), simple unique columns (Company.Name, Warehouse.Code,
+// Product.Sku, Order.Reference), soft-delete (Employee, Order), a many2many
+// join (Product/Tag) and a correlated derived value (OrderLine.Total).
+// Ported in spirit from the .NET sibling's MegaMartSchemaTests.cs, adapted
+// to GORM: EF's table-per-type inheritance (Supervisor : Employee,
+// DigitalProduct/PhysicalProduct : Product) has no GORM equivalent and is
+// left out rather than faked.
 type MMCompany struct {
 	ID   uint   `gorm:"primaryKey"`
 	Name string `gorm:"unique"`
@@ -66,6 +66,13 @@ type MMTag struct {
 	Products []*MMProduct `gorm:"many2many:megamart_product_tags;"`
 }
 
+type MMProductProfile struct {
+	ProductID       uint      `gorm:"primaryKey"`
+	Product         MMProduct `gorm:"foreignKey:ProductID"`
+	SeoSlug         string    `gorm:"unique;size:60"`
+	MetaDescription string
+}
+
 type MMInventoryItem struct {
 	WarehouseID    uint `gorm:"primaryKey"`
 	Warehouse      MMWarehouse
@@ -100,7 +107,7 @@ type MMAuditLogEntry struct {
 
 func megaMartModels() []any {
 	return []any{
-		&MMCompany{}, &MMEmployee{}, &MMWarehouse{}, &MMProduct{}, &MMTag{},
+		&MMCompany{}, &MMEmployee{}, &MMWarehouse{}, &MMProduct{}, &MMTag{}, &MMProductProfile{},
 		&MMInventoryItem{}, &MMOrder{}, &MMOrderLine{}, &MMAuditLogEntry{},
 	}
 }
@@ -113,7 +120,7 @@ func TestExplain_MegaMart_CoversEveryEntity(t *testing.T) {
 
 	report := plan.Report()
 	for _, name := range []string{
-		"MMCompany", "MMEmployee", "MMWarehouse", "MMProduct", "MMTag",
+		"MMCompany", "MMEmployee", "MMWarehouse", "MMProduct", "MMTag", "MMProductProfile",
 		"MMInventoryItem", "MMOrder", "MMOrderLine", "MMAuditLogEntry",
 	} {
 		if !strings.Contains(report, name) {
@@ -137,6 +144,7 @@ func TestSeed_Postgres_MegaMart_NoOrphansAcrossEveryReference(t *testing.T) {
 	assertNoOrphansNullable(t, db, "mm_employees", "manager_id", "mm_employees", "id")
 	assertNoOrphans(t, db, "mm_inventory_items", "warehouse_id", "mm_warehouses", "id")
 	assertNoOrphans(t, db, "mm_inventory_items", "product_id", "mm_products", "id")
+	assertNoOrphans(t, db, "mm_product_profiles", "product_id", "mm_products", "id")
 	assertNoOrphans(t, db, "mm_orders", "company_id", "mm_companies", "id")
 	assertNoOrphans(t, db, "mm_order_lines", "order_id", "mm_orders", "id")
 	assertNoOrphans(t, db, "mm_order_lines", "product_id", "mm_products", "id")
@@ -191,6 +199,37 @@ func TestSeed_Postgres_MegaMart_EmbeddedDimensionsPopulated(t *testing.T) {
 		if p.Dimensions.Length <= 0 || p.Dimensions.Width <= 0 || p.Dimensions.Height <= 0 {
 			t.Fatalf("product %d has an unpopulated embedded Dimensions: %+v", p.ID, p.Dimensions)
 		}
+	}
+}
+
+// TestSeed_Postgres_MegaMart_ProductProfileSharesKeyWithoutDuplicating
+// guards the shared-primary-key one-to-one shape: MMProductProfile's
+// ProductID is both its own primary key and its only foreign key, so at
+// most one profile can exist per product.
+func TestSeed_Postgres_MegaMart_ProductProfileSharesKeyWithoutDuplicating(t *testing.T) {
+	db := postgresDB(t)
+	models := megaMartModels()
+	if err := db.AutoMigrate(models...); err != nil {
+		t.Fatalf("AutoMigrate: %v", err)
+	}
+
+	if err := gormseed.Seed(context.Background(), db, models, autoseed.WithSeed(42), autoseed.WithScale(60)); err != nil {
+		t.Fatalf("Seed: %v", err)
+	}
+
+	var productCount, profileCount, distinctProductIDs int64
+	db.Model(&MMProduct{}).Count(&productCount)
+	db.Model(&MMProductProfile{}).Count(&profileCount)
+	db.Raw(`SELECT count(DISTINCT product_id) FROM mm_product_profiles`).Scan(&distinctProductIDs)
+
+	if profileCount == 0 {
+		t.Fatal("no product profiles were seeded")
+	}
+	if profileCount > productCount {
+		t.Fatalf("ProductProfile count = %d, want at most Product count = %d", profileCount, productCount)
+	}
+	if profileCount != distinctProductIDs {
+		t.Fatalf("%d product profiles but only %d distinct product_id values", profileCount, distinctProductIDs)
 	}
 }
 
@@ -257,7 +296,7 @@ func TestSeed_Postgres_MegaMart_Deterministic(t *testing.T) {
 
 	rowCounts := func(db *gorm.DB) map[string]int64 {
 		counts := make(map[string]int64, len(models))
-		for _, table := range []string{"mm_companies", "mm_employees", "mm_warehouses", "mm_products", "mm_tags", "mm_inventory_items", "mm_orders", "mm_order_lines", "mm_audit_log_entries"} {
+		for _, table := range []string{"mm_companies", "mm_employees", "mm_warehouses", "mm_products", "mm_tags", "mm_product_profiles", "mm_inventory_items", "mm_orders", "mm_order_lines", "mm_audit_log_entries"} {
 			var count int64
 			db.Table(table).Count(&count)
 			counts[table] = count

@@ -2,6 +2,7 @@ package gormseed
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"strings"
@@ -13,6 +14,11 @@ import (
 )
 
 const insertBatchSize = 500
+
+// ErrNilDB is returned by Seed when db is nil. Unlike Explain, which only
+// inspects Go struct types, Seed writes rows and needs a real, migrated
+// connection to write them through.
+var ErrNilDB = errors.New("gormseed: db is nil")
 
 type insertedEntity struct {
 	schema    *schema.Schema
@@ -26,8 +32,12 @@ type insertedEntity struct {
 // nullable reference is patched in a second pass once every row exists.
 //
 // models is the exhaustive set of GORM structs to seed; see Explain's doc
-// for why the list is explicit.
+// for why the list is explicit. db must not be nil.
 func Seed(ctx context.Context, db *gorm.DB, models []any, opts ...autoseed.Option) error {
+	if db == nil {
+		return ErrNilDB
+	}
+
 	entities, schemas, _, err := read(db, models)
 	if err != nil {
 		return err
@@ -77,7 +87,7 @@ func Seed(ctx context.Context, db *gorm.DB, models []any, opts ...autoseed.Optio
 			return err
 		}
 
-		if err := insertBatch(db, entitySchema, instances); err != nil {
+		if err := insertBatch(ctx, db, entitySchema, instances); err != nil {
 			return fmt.Errorf("gormseed: inserting %s: %w", name, err)
 		}
 
@@ -118,6 +128,7 @@ func buildInstances(
 ) ([]any, error) {
 	deferredFields := referenceFieldSet(deferred)
 	driverRowOf := expandDriverRows(plan)
+	blockLocalOf := blockLocalIndices(plan)
 
 	instances := make([]any, len(rows))
 	for i, values := range rows {
@@ -143,8 +154,17 @@ func buildInstances(
 			}
 
 			parentIndex := i % len(parent.instances)
-			if ref.Target == plan.Driver {
+			switch ref.Target {
+			case plan.Driver:
 				parentIndex = driverRowOf[i]
+			case plan.JunctionTarget:
+				// A junction row's non-driver parent must be distinct
+				// within its own driver row's block — reusing one would
+				// collide with a sibling row on the entity's own composite
+				// primary key. PlanGeneration already caps every block's
+				// length at the target's own row count, so a block-local,
+				// not global, index never needs to wrap mid-block.
+				parentIndex = blockLocalOf[i] % len(parent.instances)
 			}
 			if err := copyKey(ctx, parent.schema, reflect.ValueOf(parent.instances[parentIndex]).Elem(), entitySchema, instance, ref.Fields); err != nil {
 				return nil, err
@@ -177,6 +197,22 @@ func expandDriverRows(plan autoseed.EntityGenerationPlan) []int {
 	return rows
 }
 
+// blockLocalIndices returns, for each row in driver-row order, its
+// position within its own driver row's block of children — 0 at the
+// start of every block, unlike a row's position in the full entity.
+func blockLocalIndices(plan autoseed.EntityGenerationPlan) []int {
+	if plan.Driver == "" {
+		return nil
+	}
+	indices := make([]int, 0, plan.RowCount)
+	for _, count := range plan.ChildCounts {
+		for i := 0; i < count; i++ {
+			indices = append(indices, i)
+		}
+	}
+	return indices
+}
+
 func copyKey(ctx context.Context, parentSchema *schema.Schema, parentInstance reflect.Value, childSchema *schema.Schema, childInstance reflect.Value, childFields []string) error {
 	for i, childFieldName := range childFields {
 		if i >= len(parentSchema.PrimaryFields) {
@@ -194,7 +230,7 @@ func copyKey(ctx context.Context, parentSchema *schema.Schema, parentInstance re
 	return nil
 }
 
-func insertBatch(db *gorm.DB, entitySchema *schema.Schema, instances []any) error {
+func insertBatch(ctx context.Context, db *gorm.DB, entitySchema *schema.Schema, instances []any) error {
 	if len(instances) == 0 {
 		return nil
 	}
@@ -207,12 +243,19 @@ func insertBatch(db *gorm.DB, entitySchema *schema.Schema, instances []any) erro
 	slicePtr := reflect.New(sliceType)
 	slicePtr.Elem().Set(slice)
 
-	return db.Table(entitySchema.Table).CreateInBatches(slicePtr.Interface(), batchSizeFor(entitySchema)).Error
+	return db.WithContext(ctx).Table(entitySchema.Table).CreateInBatches(slicePtr.Interface(), batchSizeFor(entitySchema)).Error
 }
 
+// batchSizeFor returns the ordinary batch size unless entitySchema has no
+// field GORM will actually list in the INSERT statement — every field
+// auto-increment, so GORM emits INSERT ... DEFAULT VALUES, which has no
+// multi-row form and only ever reports the first row's generated ID back.
+// A composite primary key made of non-auto-increment foreign keys (a
+// many-to-many join table, an "attributed join" entity, a shared-primary-
+// key one-to-one) still has real values to list and batches normally.
 func batchSizeFor(entitySchema *schema.Schema) int {
 	for _, field := range entitySchema.Fields {
-		if field.DBName != "" && !field.PrimaryKey {
+		if field.DBName != "" && !field.AutoIncrement {
 			return insertBatchSize
 		}
 	}
@@ -224,7 +267,7 @@ func assignDeferred(ctx context.Context, db *gorm.DB, deferred []autoseed.Deferr
 		return nil
 	}
 
-	return db.Transaction(func(tx *gorm.DB) error {
+	return db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		for _, d := range deferred {
 			entity, ok := inserted[d.Entity]
 			if !ok {
